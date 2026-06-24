@@ -1,0 +1,4 @@
+# Ralph loop runtime artifacts
+runs/
+.process.*.before
+.base_head
