@@ -53,6 +53,7 @@ Before your first run you decompose the work into tasks (see
 | `RALPH_PROJECT` | parent of `ralph.sh` | the work target (code changes land here; `--cwd` for the spawn) |
 | `RALPH_MAX_ITERS` | `50` | hard cap on iterations; hitting it exits `3` (runaway guard) |
 | `RALPH_OMP` | `omp` | the omp binary to invoke |
+| `RALPH_MODEL` | *(omp default)* | the omp model to spawn (fuzzy match, e.g. `glm-5.2`, `glm-4.5-flash`, `opus`). Lets the loop pin a model without changing omp's global config. Unset → omp's configured default. |
 | `RALPH_MODE` | `text` | `text` (default) or `json` — `json` spawns omp under `--mode=json` so the loop can account per-iteration tokens (NDJSON logs; keyword scan stays line-anchored) |
 | `RALPH_VERIFY_GATES` | `1` | when `1`, the loop re-runs the gate command after each iteration and unchecks the box on red (an external check the agent self-report cannot provide); `0` trusts the agent |
 | `RALPH_GATE_CMD` | `npm test && npm run typecheck` | the project's quality gates, run as one shell command. Used by the loop's verification re-run AND injected into the spawned agent's prompt (AGENTS.md step 5). Override per stack: `cargo test`, `pytest -q`, `go build ./... && go test ./...`. An empty value disables the loop-level re-run. |
@@ -272,6 +273,29 @@ revertable checkpoint per task, so `git log --oneline` reads as a task ledger an
 - `jq` — only when `RALPH_MODE=json` (token accounting + keyword extraction from
   NDJSON logs). Not needed for the default text mode.
 - `awk`, `date`, `diff`, `grep`, `sed` — standard POSIX/coreutils.
+
+## Tests
+
+Deterministic unit tests (offline, zero deps) cover the bug-prone pure logic in
+`lib.sh` — keyword anchoring, flip-count detection, phase resolution, churn
+aggregation, token extraction — plus an `analytics.sh` rendering check.
+
+```bash
+./test/run_tests.sh          # unit tests only (fast, deterministic)
+```
+
+A real-AI end-to-end test drives the **actual committed `ralph.sh`** with a real
+omp + Zai GLM model on a one-task sandbox, asserting the loop reaches
+`RALPH_DONE` (exit 0), flips the box, and lands the deliverable. It is opt-in —
+it needs `omp` on `PATH`, a `ZAI_API_KEY`, network, and (small) API spend.
+
+```bash
+RUN_LIVE_AI=1 ./test/run_tests.sh                                       # default model: glm-5.2
+RALPH_TEST_MODEL=glm-4.5-flash RUN_LIVE_AI=1 ./test/run_tests.sh        # pin a cheaper model
+```
+
+The live run builds a throwaway control + work plane in a temp dir (the repo's
+own `PROCESS.md` is never touched), so it is safe to re-run.
 
 ## Origin
 

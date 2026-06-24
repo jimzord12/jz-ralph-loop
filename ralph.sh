@@ -5,10 +5,17 @@
 # $RALPH_PROJECT (default: the parent directory). Logs + analytics land in
 # runs/<UTC-timestamp>/ — one dir per invocation.
 #
+# Pure helpers (detect_outcome, detect_flip, detect_phase, churn, extract_tokens)
+# live in lib.sh alongside this script — sourced below and unit-tested under
+# test/.
+#
 # Env:
 #   RALPH_PROJECT    project to work on (default: parent of this dir)
 #   RALPH_MAX_ITERS  hard cap on iterations (default: 50)
 #   RALPH_OMP        omp binary (default: omp)
+#   RALPH_MODEL      omp model to spawn (default: omp's configured default). Fuzzy
+#                    match, e.g. `glm-5.2`, `glm-4.5-flash`, `opus`. Lets the loop
+#                    pin a specific model without changing omp's global config.
 #   RALPH_MODE       text (default) | json — json spawns omp under --mode=json so
 #                    the loop can account tokens (logs become NDJSON)
 #   RALPH_VERIFY_GATES 1 (default) | 0 — loop re-runs the gate command each
@@ -22,6 +29,9 @@
 set -euo pipefail
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib.sh
+source "$DIR/lib.sh"
+
 PROJECT="${RALPH_PROJECT:-$(cd "$DIR/.." && pwd)}"
 MAX_ITERS="${RALPH_MAX_ITERS:-50}"
 OMP="${RALPH_OMP:-omp}"
@@ -30,6 +40,9 @@ OMP="${RALPH_OMP:-omp}"
 MODE="${RALPH_MODE:-text}"
 OMP_MODE_ARGS=()
 [ "$MODE" = "json" ] && OMP_MODE_ARGS=(--mode=json)
+RALPH_MODEL="${RALPH_MODEL:-}"
+OMP_MODEL_ARGS=()
+[ -n "$RALPH_MODEL" ] && OMP_MODEL_ARGS=(--model="$RALPH_MODEL")
 VERIFY_GATES="${RALPH_VERIFY_GATES:-1}"
 GATE_CMD="${RALPH_GATE_CMD:-npm test && npm run typecheck}"
 
@@ -46,6 +59,7 @@ echo "[ralph] control: $DIR"
 echo "[ralph] project: $PROJECT"
 echo "[ralph] plan:    $PLAN_DIR"
 echo "[ralph] cap:     $MAX_ITERS iterations"
+echo "[ralph] model:   ${RALPH_MODEL:-<omp default>}"
 echo "[ralph] gates:   $GATE_CMD (verify=$VERIFY_GATES)"
 
 # Git baseline for churn analytics (empty if the project isn't a repo).
@@ -62,45 +76,6 @@ printf '%s plan=%s project=%s started=%s\n' "$(date -u +%FT%TZ)" "$PLAN_DIR" "$P
 printf 'iter,start_iso,end_iso,dur_s,outcome,task_id,phase,nfiles,ins,del,tokens\n' \
   > "$PLAN_DIR/timeline.csv"
 
-# Cumulative churn since BASE_HEAD → "nfiles ins del" (or "0 0 0").
-churn() {
-  if [ -z "$BASE_HEAD" ]; then echo "0 0 0"; return; fi
-  git -C "$PROJECT" diff --numstat "$BASE_HEAD" -- 2>/dev/null \
-    | awk 'NF>=2 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ { f++; ins += $1; del += $2 }
-           END { printf "%d %d %d", f+0, ins+0, del+0 }'
-}
-
-# detect_outcome LOG → echoes BLOCKED | DONE | NEXT | NONE (first-match-wins).
-# Anchored ^RALPH_<KW>$ per AGENTS.md §"Keyword contract": a prose mention inside
-# a sentence cannot fire because the keyword must sit ALONE on its own line. In
-# json mode the keyword lives inside assistant message text, so that text is
-# extracted first and the SAME anchor is applied to it — anchor-faithful in both
-# modes.
-detect_outcome() {
-  local text
-  if [ "$MODE" = "json" ]; then
-    text="$(jq -jr 'select(.type=="message_end" and (.message.role=="assistant")) | ((.message.content // [])[] | .text // ""), "\n"' "$1" 2>/dev/null || true)"
-  else
-    text="$(cat "$1" 2>/dev/null || true)"
-  fi
-  if   printf '%s\n' "$text" | grep -qE '^RALPH_BLOCKED$'; then echo BLOCKED
-  elif printf '%s\n' "$text" | grep -qE '^RALPH_DONE$';    then echo DONE
-  elif printf '%s\n' "$text" | grep -qE '^RALPH_NEXT$';    then echo NEXT
-  else echo NONE
-  fi
-}
-
-# extract_tokens LOG → integer token count, or empty if unavailable. json mode
-# sums usage.totalTokens across assistant message_end events (per-message usage);
-# text mode keeps the best-effort grep (omp -p text emits no usage line).
-extract_tokens() {
-  if [ "$MODE" = "json" ]; then
-    jq -s '[.[] | select(.type=="message_end" and (.message.role=="assistant")) | ((.message.usage // {}).totalTokens // 0)] | add // 0' "$1" 2>/dev/null || true
-  else
-    grep -oE '[0-9]+ tokens' "$1" | tail -1 | awk '{print $1}' || true
-  fi
-}
-
 iter=0
 while [ "$iter" -lt "$MAX_ITERS" ]; do
   iter=$((iter + 1))
@@ -112,7 +87,7 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   echo "[ralph] iter $iter → $log"
 
   set +e
-  "$OMP" -p --no-session --auto-approve "${OMP_MODE_ARGS[@]}" --cwd "$PROJECT" \
+  "$OMP" -p --no-session --auto-approve "${OMP_MODE_ARGS[@]}" "${OMP_MODEL_ARGS[@]}" --cwd "$PROJECT" \
     "You are ONE iteration of a Ralph loop. CONTROL_DIR is $DIR. Read and follow the protocol at $DIR/AGENTS.md exactly. Control files (PROCESS.md, HANDOFF.md, KNOWLEDGE.md, tasks/) live in CONTROL_DIR. Your work target is the current working directory; make code changes there. The project's quality gates are: \`$GATE_CMD\`." \
     > "$log" 2>&1
   rc=$?
@@ -132,28 +107,10 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   # Which box(es) flipped? (diff PROCESS.md before → after). Asserts the flip
   # count matches the outcome: NEXT requires exactly 1; DONE/BLOCKED/NONE require
   # 0; >1 is always wrong (AGENTS.md "never check more than one box").
-  flip_count=0
-  task_id=""
-  if [ -f "$before" ] && [ -f "$DIR/PROCESS.md" ]; then
-    flips="$(diff "$before" "$DIR/PROCESS.md" 2>/dev/null | grep -E '^> - \[x\] ' || true)"
-    if [ -n "$flips" ]; then
-      flip_count="$(printf '%s\n' "$flips" | grep -cE '^> - \[x\] ' || echo 0)"
-      task_id="$(printf '%s\n' "$flips" | head -1 | sed -E 's/^> - \[x\] ([^ ]+).*/\1/')"
-    fi
-  fi
+  read -r flip_count task_id <<< "$(detect_flip "$before" "$DIR/PROCESS.md")"
 
   # Phase = the "## Phase:" header above the task line in PROCESS.md.
-  phase=""
-  if [ -n "$task_id" ]; then
-    phase="$(awk -v t="$task_id" '
-      {
-        if (incomment) { if ($0 ~ /-->/) incomment = 0; next }
-        if ($0 ~ /<!--/) { if ($0 !~ /-->/) incomment = 1; next }
-      }
-      /^## Phase: / { ph = substr($0, 11) }
-      index($0, t) { print ph; exit }
-    ' "$DIR/PROCESS.md" || true)"
-  fi
+  phase="$(detect_phase "$DIR/PROCESS.md" "$task_id")"
 
   # Loop re-runs the gates + unchecks on red. The agent self-runs them
   # (AGENTS.md step 5) but its self-report is the only evidence; this is the
