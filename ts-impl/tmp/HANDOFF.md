@@ -72,10 +72,12 @@ ts-impl/
       loop.ts            Slice 1: ralph-loop loop create/list/status
       validate.ts        Slice 1: ralph-loop validate (expanded)
       run.ts             Slice 2: run setup (no Codex launch)
+    agent.ts             Slice 3: Codex argv, outcome detection, iteration launch
   test/
     task-spec.test.ts    Slice 0 tests (20 cases)
     slice-01.test.ts     Slice 1 tests (36 cases)
     slice-02.test.ts     Slice 2 tests (9 cases)
+    slice-03.test.ts     Slice 3 tests (16 cases)
   tmp/
     HANDOFF.md           this file
     demo-tasks/          demo Task Specs for acceptance checks
@@ -123,20 +125,34 @@ bun run src/cli.ts help
   - 9 Slice 2 tests pass. `bun test` 65/65. `bun run check` exit 0.
   - Acceptance `run demo` + `validate demo` pass in a clean Git repo.
 
-- Slices 3-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
-- Last verified commit on branch: Slice 01 (`1c7861a`); Slice 02 commit lands on
+- **Slice 3 (Agent Invocation And Artifact Capture): VERIFIED.**
+  - `src/agent.ts`: `buildCodexPrompt`, `buildCodexArgv` (default + optional
+    `model`/`reasoningEffort`/`sandbox`/`profile` overrides), `detectOutcome`
+    (standalone-only; `RALPH_BLOCKED` wins on conflict), `agentIterationDir` /
+    `agentIterationArtifacts`, `defaultAgentSpawn` (timeout via SIGKILL, ENOENT
+    recorded not thrown), and `runAgentIteration` (injectable launcher; snapshots
+    progress before/after, captures stdout/stderr, detects outcome).
+  - `RalphConfig.agent` widened to `CodexAgentConfig` in `src/commands/run.ts`.
+  - `src/cli.ts`: `run` launches one Agent-Iteration after setup, reports the
+    outcome + artifact paths, then stops before verification.
+  - 16 Slice 3 tests pass. `bun test` 81/81. `bun run check` exit 0.
+
+- Slices 4-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
+- Last verified commit on branch: Slice 02 (`16184e9`); Slice 03 commit lands on
   the same branch.
 
 ## Next Action
 
-Start **Slice 3 — Agent Invocation And Artifact Capture**
-(`ts-impl/plan/03-SLICE-agent-invocation-artifact-capture.md`).
+Start **Slice 4 — Progress Verification**
+(`ts-impl/plan/04-SLICE-progress-verification.md`).
 
-Scope: launch Codex (`codex exec --sandbox workspace-write`) per
-Agent-Iteration using the `RUN_CONTEXT.md` from Slice 2's `runSetup`, capture
-stdout/stderr and per-iteration artifacts under `runs/<run-id>/agent-iterations/<n>/`,
-and detect the outcome keyword. `runSetup` returns a `RunSetupResult` (selected
-task, caps, run/context paths) ready to drive the launch.
+Scope: classify one Agent-Iteration as protocol-valid / blocked / rejected by
+comparing `progress.before.json` and `progress.after.json` against the detected
+outcome, and write `summary.json`. Slice 3's `runAgentIteration` already returns
+the `outcome`, `timedOut`, and the artifact paths (`progress.before.json` /
+`progress.after.json`) needed to drive verification. Reuse the Slice 0
+eligible-task logic for task-identity checks. The runner only verifies; it never
+edits `progress.json`.
 
 Acceptance checks:
 

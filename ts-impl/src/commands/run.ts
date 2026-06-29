@@ -8,6 +8,7 @@ import { validateInstallation, validateLoop } from "./validate.js";
 import { selectEligibleTask } from "../task-spec.js";
 import type { ProgressTask } from "../task-spec.js";
 import type { ProgressJson } from "./loop.js";
+import type { CodexAgentConfig } from "../agent.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -15,7 +16,7 @@ const execFileAsync = promisify(execFile);
 export interface RalphConfig {
   workPlane: string;
   qualityGate: string;
-  agent: { kind: string };
+  agent: CodexAgentConfig;
   maxRejectedIterations: number;
   agentTimeoutSeconds: number;
   qualityGateTimeoutSeconds: number;

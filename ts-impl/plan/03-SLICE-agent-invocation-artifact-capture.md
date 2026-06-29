@@ -52,4 +52,30 @@ bun run src/cli.ts run demo
 
 ## Completion Notes
 
-Pending.
+Status: **VERIFIED.**
+
+- `src/agent.ts` implements the slice:
+  - `buildCodexPrompt` / `buildCodexArgv` — build the Codex argv from
+    `config.agent`. Default is `exec --sandbox workspace-write "<prompt>"`;
+    optional `model`, `reasoningEffort` (`-c model_reasoning_effort="<e>"`),
+    `sandbox`, and `profile` map to CLI overrides per `IMPLEMENTATION.md`.
+  - `detectOutcome` — recognizes only standalone `RALPH_NEXT` / `RALPH_DONE` /
+    `RALPH_BLOCKED` lines (trimmed). Embedded keywords are ignored; if more than
+    one distinct keyword appears, `RALPH_BLOCKED` wins.
+  - `agentIterationDir` / `agentIterationArtifacts` — stable paths under
+    `runs/<run-id>/agent-iterations/<n>/`.
+  - `defaultAgentSpawn` — spawns the process in the work plane, captures
+    stdout/stderr, enforces `agentTimeoutSeconds` via `SIGKILL`, and records a
+    launch failure (e.g. Codex not installed) on stderr instead of throwing.
+  - `runAgentIteration` — snapshots `progress.before.json`, launches the agent,
+    writes `stdout.log`/`stderr.log` and `progress.after.json`, and detects the
+    outcome. A timed-out iteration yields no outcome. The launcher is injectable
+    so tests run without a real Codex binary.
+- `RalphConfig.agent` widened to `CodexAgentConfig` (`src/commands/run.ts`).
+- `src/cli.ts` `run` now launches one Agent-Iteration after setup and reports the
+  captured outcome + artifact paths, then stops before verification.
+- `src/commands/docs.ts` `run` section status updated.
+- 16 Slice 3 tests added. `bun test` 81/81. `bun run check` exit 0.
+- Acceptance: `run demo` in a clean Git repo launches a stub `codex`, captures
+  artifacts, and detects `RALPH_NEXT`; a missing `codex` is recorded on
+  `stderr.log` without crashing (outcome: none, exit 0).

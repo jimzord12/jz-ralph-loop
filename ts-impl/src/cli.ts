@@ -6,7 +6,8 @@ import { isInsideGitRepo, runInit } from "./commands/init.js";
 import { getDocs } from "./commands/docs.js";
 import { runLoopCreate, runLoopList, runLoopStatus } from "./commands/loop.js";
 import { validateInstallation, validateLoop } from "./commands/validate.js";
-import { runSetup } from "./commands/run.js";
+import { loadConfig, runSetup } from "./commands/run.js";
+import { runAgentIteration } from "./agent.js";
 
 type CliCommand = "init" | "loop" | "tasks" | "run" | "validate" | "docs" | "help";
 
@@ -230,9 +231,35 @@ async function main(): Promise<number> {
     if (result.eligibleTask) {
       console.log(`Selected task: ${result.eligibleTask.id} (${result.eligibleTask.spec})`);
       console.log("");
-      console.log("Next (later slices): launch the agent for this task:");
-      console.log("  codex exec --sandbox workspace-write");
-      console.log(`  with prompt: Read ${result.runContextPath} and follow it exactly.`);
+
+      // Slice 3: launch one Agent-Iteration and capture artifacts. Verification,
+      // checkpoints, and rejection recovery land in later slices.
+      const config = await loadConfig(ralphDir);
+      const progressPath = join(ralphDir, "loops", loopName, "progress.json");
+      console.log(`Launching agent (${config.agent.kind}) for Agent-Iteration ${result.agentIteration}...`);
+
+      const iteration = await runAgentIteration({
+        config,
+        workPlane: result.workPlane,
+        runDir: result.runDir,
+        progressPath,
+        runContextPath: result.runContextPath,
+        iteration: result.agentIteration,
+      });
+
+      console.log("");
+      console.log(`Agent-Iteration ${iteration.iteration} captured:`);
+      console.log(`  Artifacts:   ${iteration.artifacts.dir}`);
+      console.log(`  stdout.log:  ${iteration.artifacts.stdoutLog}`);
+      console.log(`  stderr.log:  ${iteration.artifacts.stderrLog}`);
+      if (iteration.timedOut) {
+        console.log(`  Outcome:     (timed out after ${config.agentTimeoutSeconds}s)`);
+      } else {
+        console.log(`  Exit code:   ${iteration.exitCode ?? "unknown"}`);
+        console.log(`  Outcome:     ${iteration.outcome ?? "none detected"}`);
+      }
+      console.log("");
+      console.log("Verification, checkpoint, and rejection recovery land in later slices.");
       return EXIT.SUCCESS;
     }
 

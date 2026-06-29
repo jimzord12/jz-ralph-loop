@@ -19,7 +19,7 @@ to implement and verify each slice.
 | 00    | [Task Spec Contract Foundations](./00-SLICE-task-spec-contract-foundations.md)           | verified | none       | `bun test`; `bun run check`                                           |
 | 01    | [Non-Agent Commands](./01-SLICE-non-agent-commands.md)                                   | verified | 00         | `init`; `docs`; `loop create`; `validate`; `loop list`; `loop status` |
 | 02    | [Run Foundations Without Codex Launch](./02-SLICE-run-foundations-no-codex.md)           | verified | 01         | `run demo`; `validate demo`                                           |
-| 03    | [Agent Invocation And Artifact Capture](./03-SLICE-agent-invocation-artifact-capture.md) | planned | 02         | `bun test`; `run demo`                                                |
+| 03    | [Agent Invocation And Artifact Capture](./03-SLICE-agent-invocation-artifact-capture.md) | verified | 02         | `bun test`; `run demo`                                                |
 | 04    | [Progress Verification](./04-SLICE-progress-verification.md)                             | planned | 03         | `bun test`; `run demo`                                                |
 | 05    | [Quality Gate And Checkpoint Commits](./05-SLICE-quality-gate-checkpoint-commits.md)     | planned | 04         | `bun test`; `run demo`; `git log -1 --oneline`                        |
 | 06    | [Rejection Stash And Retry Loop](./06-SLICE-rejection-stash-retry-loop.md)               | planned | 05         | `bun test`; `run demo`; `git stash list`                              |
