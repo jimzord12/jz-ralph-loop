@@ -8,6 +8,7 @@ import { runLoopCreate, runLoopList, runLoopStatus } from "./commands/loop.js";
 import { validateInstallation, validateLoop } from "./commands/validate.js";
 import { loadConfig, runSetup } from "./commands/run.js";
 import { runAgentIteration } from "./agent.js";
+import { verifyAndSummarize } from "./verify.js";
 
 type CliCommand = "init" | "loop" | "tasks" | "run" | "validate" | "docs" | "help";
 
@@ -232,8 +233,9 @@ async function main(): Promise<number> {
       console.log(`Selected task: ${result.eligibleTask.id} (${result.eligibleTask.spec})`);
       console.log("");
 
-      // Slice 3: launch one Agent-Iteration and capture artifacts. Verification,
-      // checkpoints, and rejection recovery land in later slices.
+      // Slice 3-4: launch one Agent-Iteration, capture artifacts, then verify
+      // the progress transition. Checkpoints and rejection recovery land in
+      // later slices.
       const config = await loadConfig(ralphDir);
       const progressPath = join(ralphDir, "loops", loopName, "progress.json");
       console.log(`Launching agent (${config.agent.kind}) for Agent-Iteration ${result.agentIteration}...`);
@@ -258,8 +260,17 @@ async function main(): Promise<number> {
         console.log(`  Exit code:   ${iteration.exitCode ?? "unknown"}`);
         console.log(`  Outcome:     ${iteration.outcome ?? "none detected"}`);
       }
+      // Slice 4: classify the progress transition and write summary.json.
+      const summary = await verifyAndSummarize(iteration);
       console.log("");
-      console.log("Verification, checkpoint, and rejection recovery land in later slices.");
+      console.log(`Verification:  ${summary.status.toUpperCase()}`);
+      console.log(`  Reason:      ${summary.reason}`);
+      if (summary.newlyCompleted.length > 0) {
+        console.log(`  Completed:   ${summary.newlyCompleted.join(", ")}`);
+      }
+      console.log(`  summary.json: ${iteration.artifacts.summary}`);
+      console.log("");
+      console.log("Checkpoint and rejection recovery land in later slices.");
       return EXIT.SUCCESS;
     }
 

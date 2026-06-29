@@ -55,4 +55,32 @@ bun run src/cli.ts run demo
 
 ## Completion Notes
 
-Pending.
+**VERIFIED.**
+
+- `src/verify.ts`:
+  - `verifyProgressTransition(before, after, outcome, timedOut?)` — pure
+    classifier returning `{ status, outcome, reason, selectedTaskId,
+    newlyCompleted }`. `status` is `"valid" | "blocked" | "rejected"`.
+    - Recomputes the selected eligible task from the **before** snapshot via the
+      Slice 0 `selectEligibleTask`, so verification depends only on the two
+      snapshots and the detected outcome.
+    - `newlyCompleted` = tasks `complete` in `after` that were not `complete` in
+      `before`.
+    - Rejects: timeout, missing/invalid outcome, `RALPH_NEXT` with zero or >1
+      completions, `RALPH_NEXT` completing a non-selected task, `RALPH_DONE`
+      with new completions, `RALPH_DONE` with pending remaining, `RALPH_BLOCKED`
+      with new completions. (Quality-gate rejection is Slice 5.)
+    - `RALPH_BLOCKED` (no new completions) → `blocked`; valid `RALPH_NEXT` /
+      `RALPH_DONE` → `valid`.
+  - `buildIterationSummary` + `verifyAndSummarize` — reads the
+    `progress.before.json` / `progress.after.json` snapshots (tolerating the
+    empty `{}` fallback), classifies, and writes `summary.json`
+    (`{ iteration, outcome, status, rejected, reason, selectedTaskId,
+    newlyCompleted, timedOut }`).
+  - The runner only verifies; it never edits `progress.json`.
+- `src/cli.ts`: `run` now verifies the captured Agent-Iteration, writes
+  `summary.json`, and reports the classification + reason. Checkpoint and
+  rejection recovery remain later slices.
+- 14 Slice 4 tests (`test/slice-04.test.ts`). `bun test` 95/95. `bun run check`
+  exit 0. `run demo` in a clean Git repo writes `summary.json` and exits 0
+  (classified `rejected` when no Codex binary is present).

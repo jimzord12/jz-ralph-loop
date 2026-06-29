@@ -73,11 +73,13 @@ ts-impl/
       validate.ts        Slice 1: ralph-loop validate (expanded)
       run.ts             Slice 2: run setup (no Codex launch)
     agent.ts             Slice 3: Codex argv, outcome detection, iteration launch
+    verify.ts            Slice 4: progress-transition classification + summary.json
   test/
     task-spec.test.ts    Slice 0 tests (20 cases)
     slice-01.test.ts     Slice 1 tests (36 cases)
     slice-02.test.ts     Slice 2 tests (9 cases)
     slice-03.test.ts     Slice 3 tests (16 cases)
+    slice-04.test.ts     Slice 4 tests (14 cases)
   tmp/
     HANDOFF.md           this file
     demo-tasks/          demo Task Specs for acceptance checks
@@ -137,28 +139,40 @@ bun run src/cli.ts help
     outcome + artifact paths, then stops before verification.
   - 16 Slice 3 tests pass. `bun test` 81/81. `bun run check` exit 0.
 
-- Slices 4-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
-- Last verified commit on branch: Slice 02 (`16184e9`); Slice 03 commit lands on
-  the same branch.
+- **Slice 4 (Progress Verification): VERIFIED.**
+  - `src/verify.ts`: `verifyProgressTransition` (pure classifier →
+    `valid` / `blocked` / `rejected`, recomputing the selected task from the
+    before-snapshot via Slice 0 `selectEligibleTask`), `buildIterationSummary`,
+    and `verifyAndSummarize` (reads before/after snapshots, classifies, writes
+    `summary.json`). The runner only verifies; it never edits `progress.json`.
+  - `src/cli.ts`: `run` verifies the captured Agent-Iteration, writes
+    `summary.json`, and reports classification + reason after launch.
+  - 14 Slice 4 tests pass. `bun test` 95/95. `bun run check` exit 0.
+  - `run demo` in a clean Git repo writes `summary.json` and exits 0.
+
+- Slices 5-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
+- Slice 04 commit lands on branch `claude/impl-ts-handoff-review-ql7xhy`.
 
 ## Next Action
 
-Start **Slice 4 — Progress Verification**
-(`ts-impl/plan/04-SLICE-progress-verification.md`).
+Start **Slice 5 — Quality Gate And Checkpoint Commits**
+(`ts-impl/plan/05-SLICE-quality-gate-checkpoint-commits.md`).
 
-Scope: classify one Agent-Iteration as protocol-valid / blocked / rejected by
-comparing `progress.before.json` and `progress.after.json` against the detected
-outcome, and write `summary.json`. Slice 3's `runAgentIteration` already returns
-the `outcome`, `timedOut`, and the artifact paths (`progress.before.json` /
-`progress.after.json`) needed to drive verification. Reuse the Slice 0
-eligible-task logic for task-identity checks. The runner only verifies; it never
-edits `progress.json`.
+Scope: for a `valid` `RALPH_NEXT` classification (Slice 4), run the configured
+quality gate in the work plane; on pass, create one Git checkpoint commit
+(work-plane changes + updated `progress.json` + rewritten `HANDOFF.md` + valid
+`KNOWLEDGE.md`; run artifacts only when `commitRunArtifacts` is true). A failed
+quality gate after `RALPH_NEXT` is a rejection (see IMPLEMENTATION.md
+§Verification). Slice 4's `verifyAndSummarize` already returns the classified
+`IterationSummary`; build commit/gate logic on top of it. Stash-based rejection
+recovery is Slice 6.
 
 Acceptance checks:
 
 ```bash
 bun test
 bun run src/cli.ts run demo
+git log -1 --oneline
 ```
 
 ## Working Conventions
