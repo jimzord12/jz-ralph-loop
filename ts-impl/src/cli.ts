@@ -6,6 +6,7 @@ import { isInsideGitRepo, runInit } from "./commands/init.js";
 import { getDocs } from "./commands/docs.js";
 import { runLoopCreate, runLoopList, runLoopStatus } from "./commands/loop.js";
 import { validateInstallation, validateLoop } from "./commands/validate.js";
+import { runSetup } from "./commands/run.js";
 
 type CliCommand = "init" | "loop" | "tasks" | "run" | "validate" | "docs" | "help";
 
@@ -202,10 +203,50 @@ async function main(): Promise<number> {
     return EXIT.USAGE_ERROR;
   }
 
-  // run (pending)
+  // run (setup only — Slice 2; Codex launch lands in later slices)
   if (parsed.command === "run") {
-    console.log("Command is intentionally pending its approved implementation slice.");
-    return EXIT.USAGE_ERROR;
+    const ralphDir = getRalphDir(parsed.flags);
+    const loopName = parsed.positionals[0];
+    if (!loopName) {
+      throw new RalphError(
+        "Missing loop name. Usage: ralph-loop run <loop-name>",
+        EXIT.USAGE_ERROR,
+      );
+    }
+
+    const result = await runSetup(ralphDir, loopName, { cwd: process.cwd() });
+
+    console.log(`Run prepared for loop "${result.loopName}".`);
+    console.log(`  Run id:            ${result.runId}`);
+    console.log(`  Work plane:        ${result.workPlane}`);
+    console.log(`  Run directory:     ${result.runDir}`);
+    console.log(`  RUN_CONTEXT.md:    ${result.runContextPath}`);
+    console.log(
+      `  Agent-Iteration:   ${result.agentIteration} of cap ${result.agentIterationCap}` +
+        ` (pending ${result.pendingCount} + rejection cap ${result.maxRejectedIterations} + 1)`,
+    );
+    console.log("");
+
+    if (result.eligibleTask) {
+      console.log(`Selected task: ${result.eligibleTask.id} (${result.eligibleTask.spec})`);
+      console.log("");
+      console.log("Next (later slices): launch the agent for this task:");
+      console.log("  codex exec --sandbox workspace-write");
+      console.log(`  with prompt: Read ${result.runContextPath} and follow it exactly.`);
+      return EXIT.SUCCESS;
+    }
+
+    if (result.pendingCount === 0) {
+      console.log("No pending tasks remain. The Loop appears complete.");
+      return EXIT.SUCCESS;
+    }
+
+    // Pending tasks exist but none are eligible (all blocked by dependencies).
+    console.log("No eligible task: all pending tasks are blocked by incomplete dependencies.");
+    for (const t of result.blockedPending) {
+      console.log(`  - ${t.id} (waiting on: ${t.missingDependencies.join(", ")})`);
+    }
+    return EXIT.BLOCKED;
   }
 
   return EXIT.SUCCESS;

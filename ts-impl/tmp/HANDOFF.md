@@ -71,9 +71,11 @@ ts-impl/
       docs.ts            Slice 1: ralph-loop docs
       loop.ts            Slice 1: ralph-loop loop create/list/status
       validate.ts        Slice 1: ralph-loop validate (expanded)
+      run.ts             Slice 2: run setup (no Codex launch)
   test/
     task-spec.test.ts    Slice 0 tests (20 cases)
     slice-01.test.ts     Slice 1 tests (36 cases)
+    slice-02.test.ts     Slice 2 tests (9 cases)
   tmp/
     HANDOFF.md           this file
     demo-tasks/          demo Task Specs for acceptance checks
@@ -109,24 +111,38 @@ bun run src/cli.ts help
   - 36 Slice 1 tests pass. `bun test` 56/56. `bun run check` exit 0.
   - All Slice 1 acceptance checks pass.
 
-- Slices 2-8: `planned`. `src/cli.ts` returns "pending" for `run` and `tasks`.
-- Last commit on branch: `feat(ts-impl): implement Slice 01 — non-agent CLI
-  commands` (`1c7861a`).
+- **Slice 2 (Run Foundations Without Codex Launch): VERIFIED.**
+  - `src/commands/run.ts`: `loadConfig`, `formatRunId`, and `runSetup` —
+    validates installation + Loop, resolves the work plane, enforces Git +
+    clean-worktree (hard fail, no bypass), selects the eligible task, computes
+    `agentIterationCap = pendingCount + maxRejectedIterations + 1`, creates
+    `runs/<run-id>/`, and writes diagnostic `RUN_CONTEXT.md`.
+  - `src/cli.ts`: `run <loop-name>` wired (setup only). Exits 0 on success, 4
+    when all pending tasks are dependency-blocked, 3 on validation/Git failures.
+  - `src/commands/docs.ts`: `run` section status updated.
+  - 9 Slice 2 tests pass. `bun test` 65/65. `bun run check` exit 0.
+  - Acceptance `run demo` + `validate demo` pass in a clean Git repo.
+
+- Slices 3-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
+- Last verified commit on branch: Slice 01 (`1c7861a`); Slice 02 commit lands on
+  the same branch.
 
 ## Next Action
 
-Start **Slice 2 — Run Foundations Without Codex Launch**
-(`ts-impl/plan/02-SLICE-run-foundations-no-codex.md`).
+Start **Slice 3 — Agent Invocation And Artifact Capture**
+(`ts-impl/plan/03-SLICE-agent-invocation-artifact-capture.md`).
 
-Scope: parse `progress.json`, select the eligible task, generate
-`RUN_CONTEXT.md`, implement the run loop skeleton (without actually launching
-Codex), validate pre-run state (clean worktree, valid installation + loop).
+Scope: launch Codex (`codex exec --sandbox workspace-write`) per
+Agent-Iteration using the `RUN_CONTEXT.md` from Slice 2's `runSetup`, capture
+stdout/stderr and per-iteration artifacts under `runs/<run-id>/agent-iterations/<n>/`,
+and detect the outcome keyword. `runSetup` returns a `RunSetupResult` (selected
+task, caps, run/context paths) ready to drive the launch.
 
 Acceptance checks:
 
 ```bash
+bun test
 bun run src/cli.ts run demo
-bun run src/cli.ts validate demo
 ```
 
 ## Working Conventions

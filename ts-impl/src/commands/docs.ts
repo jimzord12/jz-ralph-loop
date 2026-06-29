@@ -267,7 +267,10 @@ Requires:
   - A named Loop with at least one pending task.
   - A clean Git worktree in the work plane (hard fail, no bypass).
 
-Status: pending (Slice 2+).
+Status: run setup implemented (Slice 2). It validates the installation, Loop,
+Git requirements, and clean worktree; selects the eligible task; computes caps;
+creates the Run directory; and writes RUN_CONTEXT.md. Agent launch, verification,
+checkpoints, and rejection recovery land in later slices.
 `,
 
   validate: `ralph-loop validate [<loop-name>] [--ralph-dir <path>]
