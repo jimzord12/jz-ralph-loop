@@ -15,7 +15,8 @@ Key framing:
 
 - The runner is **agent-less orchestration**. It does not implement tasks
   itself. It launches Codex, captures output, verifies protocol compliance,
-  creates Git commits, stashes rejected work, and decides whether to continue.
+  creates Git commits, stashes rejected work, and decides whether to continue,
+  block, or stop.
 - v1 is **Codex-first** (`codex exec --sandbox workspace-write`), local, and
   Bun-based. No standalone binary yet.
 - The repo-local installation lives in `.jz-ralph/`. `progress.json` is the
@@ -42,10 +43,11 @@ decisions back into `RALPH_LOOP.md`.
    Update the status table as slices progress.
 5. `ts-impl/plan/NN-SLICE-*.md` — per-slice scope, TDD plan, acceptance checks,
    and completion notes.
-6. `ts-impl/src/task-spec.ts` — implemented Slice 0 module (consumed by later
-   slices).
-7. `ts-impl/src/cli.ts` — current CLI scaffold (still mostly pending commands).
-8. `ts-impl/package.json` / `ts-impl/tsconfig.json` — Bun/scripts/strictness.
+6. `ts-impl/src/errors.ts` — `RalphError` class and `EXIT` codes.
+7. `ts-impl/src/task-spec.ts` — Slice 0 module (consumed by later slices).
+8. `ts-impl/src/commands/` — Slice 1 command modules (init, docs, loop, validate).
+9. `ts-impl/src/cli.ts` — CLI entry / arg parsing / command dispatch.
+10. `ts-impl/package.json` / `ts-impl/tsconfig.json` — Bun/scripts/strictness.
 
 Only read `../RALPH_LOOP.md` if the user asks to revisit abstract protocol
 semantics.
@@ -61,12 +63,20 @@ ts-impl/
     README.md            slice status index (source of truth for progress)
     00..08-SLICE-*.md    per-slice guides + completion notes
   src/
-    cli.ts               CLI entry / arg parsing / command dispatch (scaffold)
+    errors.ts            RalphError + EXIT codes map
     task-spec.ts         Slice 0: task contract module (DONE)
+    cli.ts               CLI entry / arg parsing / command dispatch
+    commands/
+      init.ts            Slice 1: ralph-loop init
+      docs.ts            Slice 1: ralph-loop docs
+      loop.ts            Slice 1: ralph-loop loop create/list/status
+      validate.ts        Slice 1: ralph-loop validate (expanded)
   test/
     task-spec.test.ts    Slice 0 tests (20 cases)
+    slice-01.test.ts     Slice 1 tests (36 cases)
   tmp/
     HANDOFF.md           this file
+    demo-tasks/          demo Task Specs for acceptance checks
 ```
 
 Commands:
@@ -82,34 +92,41 @@ bun run src/cli.ts help
 
 - **Slice 0 (Task Spec Contract Foundations): VERIFIED.**
   - `src/task-spec.ts` provides: `isValidTaskFilename`, `taskIdFromFilename`,
-    `parseTaskSpec` (required-heading validation + `Blocked By` parsing),
-    `validateTaskDependencies` (unknown-ref + cycle detection), and
-    `selectEligibleTask`.
-  - `test/task-spec.test.ts`: 20 pass / 0 fail. `bun run check`: exit 0.
-  - Slice 0 intentionally did NOT wire into `src/cli.ts` (out of scope there).
-- Slices 1-8: `planned`. `src/cli.ts` still returns "pending" for `init`,
-  `loop`, `tasks`, and `docs`, and only does file-presence `validate`.
-- Last commit on `main`: `feat(ts-impl): add TypeScript CLI scaffold and Slice 0
-  task-spec module` (`cdcf6a9`).
+    `parseTaskSpec`, `validateTaskDependencies`, `selectEligibleTask`.
+  - 20 tests pass.
+
+- **Slice 1 (Non-Agent Commands): VERIFIED.**
+  - `src/errors.ts`: `RalphError` + `EXIT` codes map.
+  - `src/commands/init.ts`: `runInit` — creates `.jz-ralph/` scaffold, checks
+    for git repo, hard-fails if already exists.
+  - `src/commands/docs.ts`: `getDocs` — 21 doc sections, `exit-codes` alias,
+    space- and slash-separated nested section support.
+  - `src/commands/loop.ts`: `runLoopCreate` (wired to Slice 0 task-spec for
+    validation), `runLoopList`, `runLoopStatus`.
+  - `src/commands/validate.ts`: expanded `validateInstallation` +
+    `validateLoop` with JSON/schema validation for `config.json`,
+    `progress.json`, and task files.
+  - 36 Slice 1 tests pass. `bun test` 56/56. `bun run check` exit 0.
+  - All Slice 1 acceptance checks pass.
+
+- Slices 2-8: `planned`. `src/cli.ts` returns "pending" for `run` and `tasks`.
+- Last commit on branch: `feat(ts-impl): implement Slice 01 — non-agent CLI
+  commands` (`1c7861a`).
 
 ## Next Action
 
-Start **Slice 1 — Non-Agent Commands** (`ts-impl/plan/01-SLICE-non-agent-commands.md`).
+Start **Slice 2 — Run Foundations Without Codex Launch**
+(`ts-impl/plan/02-SLICE-run-foundations-no-codex.md`).
 
-Scope: `init`, `docs`, expanded `validate`, `loop create`, `loop list`,
-`loop status`. Wire `loop create` to the Slice 0 `task-spec.ts` module so invalid
-Task Specs hard fail. Do NOT implement `run` in Slice 1.
+Scope: parse `progress.json`, select the eligible task, generate
+`RUN_CONTEXT.md`, implement the run loop skeleton (without actually launching
+Codex), validate pre-run state (clean worktree, valid installation + loop).
 
 Acceptance checks:
 
 ```bash
-bun run src/cli.ts init
-bun run src/cli.ts docs
-bun run src/cli.ts docs examples simple
-bun run src/cli.ts loop create --name demo --from ./tmp/demo-tasks
+bun run src/cli.ts run demo
 bun run src/cli.ts validate demo
-bun run src/cli.ts loop list
-bun run src/cli.ts loop status demo
 ```
 
 ## Working Conventions
@@ -123,8 +140,6 @@ bun run src/cli.ts loop status demo
 - After each slice: run its acceptance checks, update `plan/README.md` status to
   `verified`, and fill the slice file's Completion Notes before advancing.
 - Keep task parsing/validation/selection in `task-spec.ts`, separate from CLI
-  dispatch. `progress.json` is the only authoritative Plan/progress state — do
-  not persist a derived task queue or dependency graph.
+  dispatch. `progress.json` is the only authoritative Plan/progress state.
 - tsconfig is strict (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`);
   account for that in types.
-```
