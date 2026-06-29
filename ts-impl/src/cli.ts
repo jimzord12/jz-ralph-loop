@@ -9,6 +9,7 @@ import { validateInstallation, validateLoop } from "./commands/validate.js";
 import { loadConfig, runSetup } from "./commands/run.js";
 import { runAgentIteration } from "./agent.js";
 import { verifyAndSummarize } from "./verify.js";
+import { runQualityGateAndCheckpoint } from "./checkpoint.js";
 
 type CliCommand = "init" | "loop" | "tasks" | "run" | "validate" | "docs" | "help";
 
@@ -269,8 +270,36 @@ async function main(): Promise<number> {
         console.log(`  Completed:   ${summary.newlyCompleted.join(", ")}`);
       }
       console.log(`  summary.json: ${iteration.artifacts.summary}`);
+
+      // Slice 5: for an accepted RALPH_NEXT, run the quality gate and create one
+      // checkpoint commit on pass. A failed gate is a rejection. RALPH_DONE and
+      // RALPH_BLOCKED neither run the gate nor commit.
+      const checkpoint = await runQualityGateAndCheckpoint({
+        summary,
+        config,
+        workPlane: result.workPlane,
+        ralphDir,
+        loopName,
+        runId: result.runId,
+        artifacts: iteration.artifacts,
+      });
+
       console.log("");
-      console.log("Checkpoint and rejection recovery land in later slices.");
+      if (checkpoint.gate) {
+        const gateLabel = checkpoint.gate.timedOut
+          ? `timed out after ${config.qualityGateTimeoutSeconds}s`
+          : checkpoint.gate.passed
+            ? "passed"
+            : `failed (exit ${checkpoint.gate.exitCode ?? "unknown"})`;
+        console.log(`Quality gate:  ${gateLabel} (${config.qualityGate})`);
+      }
+      console.log(`Checkpoint:    ${checkpoint.action.toUpperCase()}`);
+      console.log(`  Reason:      ${checkpoint.reason}`);
+      if (checkpoint.commit) {
+        console.log(`  Commit:      ${checkpoint.commit.sha} "${checkpoint.commit.message}"`);
+      }
+      console.log("");
+      console.log("Rejection stash recovery and the retry loop land in later slices.");
       return EXIT.SUCCESS;
     }
 

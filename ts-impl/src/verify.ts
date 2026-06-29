@@ -27,6 +27,19 @@ export interface VerificationResult {
   newlyCompleted: string[];
 }
 
+/** Quality-gate execution result recorded on a summary (Slice 5). */
+export interface SummaryGate {
+  passed: boolean;
+  exitCode: number | null;
+  timedOut: boolean;
+}
+
+/** Git checkpoint commit recorded on a summary (Slice 5). */
+export interface SummaryCommit {
+  sha: string;
+  message: string;
+}
+
 /** The persisted `summary.json` shape for one Agent-Iteration. */
 export interface IterationSummary {
   iteration: number;
@@ -37,6 +50,10 @@ export interface IterationSummary {
   selectedTaskId: string | null;
   newlyCompleted: string[];
   timedOut: boolean;
+  /** Quality-gate result, present once the gate runs (Slice 5). */
+  gate?: SummaryGate;
+  /** Checkpoint commit, present once an accepted task is committed (Slice 5). */
+  commit?: SummaryCommit;
 }
 
 /**

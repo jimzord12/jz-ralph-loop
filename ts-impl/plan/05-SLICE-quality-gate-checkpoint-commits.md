@@ -53,4 +53,35 @@ git log -1 --oneline
 
 ## Completion Notes
 
-Pending.
+Verified.
+
+- `src/checkpoint.ts` adds:
+  - `runQualityGate` — runs `config.qualityGate` in the work plane through a
+    shell with an injectable launcher (`GateSpawn` / `defaultGateSpawn`),
+    enforces `qualityGateTimeoutSeconds` via SIGKILL, captures `gate.stdout.log`
+    and `gate.stderr.log`, and passes only on exit 0 without timeout.
+  - `checkpointCommitMessage` — default `ralph: complete <task-id>`.
+  - `createCheckpointCommit` — stages all changes (`git add -A`), unstages the
+    Loop's `runs/` diagnostics unless `commitRunArtifacts` is true, commits once,
+    and returns the resolved commit SHA. Uses an injectable `GitRunner`
+    (`defaultGitRunner` shells out to `git`).
+  - `runQualityGateAndCheckpoint` — orchestrator. Only a protocol-valid
+    `RALPH_NEXT` runs the gate; on pass it creates one checkpoint commit, on
+    fail/timeout it becomes a rejection. `RALPH_DONE` → `done`, `RALPH_BLOCKED`
+    → `blocked`, and an already-rejected verification stays rejected — none of
+    these run the gate or commit. It rewrites `summary.json` with the `gate`
+    result and (on checkpoint) the `commit`.
+- `src/agent.ts`: `AgentIterationArtifacts` gains `gateStdoutLog` /
+  `gateStderrLog` (`gate.stdout.log` / `gate.stderr.log`).
+- `src/verify.ts`: `IterationSummary` gains optional `gate` (`SummaryGate`) and
+  `commit` (`SummaryCommit`) fields, written by the checkpoint step.
+- `src/cli.ts`: `run` calls `runQualityGateAndCheckpoint` after verification and
+  reports the gate result, checkpoint action, and commit.
+- The runner never edits `progress.json`; Codex owns task state. The checkpoint
+  step only stages/commits what Codex produced.
+- Stash-based rejection recovery and the retry loop remain out of scope (Slice 6).
+- 19 Slice 5 tests pass. `bun test` 107/107. `bun run check` exit 0.
+- Manual e2e (real git repo, fake `codex` completing the task, gate `true`):
+  one commit `ralph: complete 001-hello` containing `hello.txt`, `progress.json`,
+  and `HANDOFF.md`; run diagnostics left untracked. With gate `false`, the same
+  iteration is rejected and no commit is created.

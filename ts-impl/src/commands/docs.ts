@@ -267,13 +267,17 @@ Requires:
   - A named Loop with at least one pending task.
   - A clean Git worktree in the work plane (hard fail, no bypass).
 
-Status: setup + single Agent-Iteration implemented (Slices 2-3). It validates the
-installation, Loop, Git requirements, and clean worktree; selects the eligible
-task; computes caps; writes RUN_CONTEXT.md; launches one Codex Agent-Iteration
-(codex exec --sandbox workspace-write) with the configured timeout; captures
-stdout.log, stderr.log, and progress before/after snapshots under
-runs/<run-id>/agent-iterations/<n>/; and detects the outcome keyword. Progress
-verification, checkpoints, and rejection recovery land in later slices.
+Status: setup, single Agent-Iteration, verification, and checkpoint implemented
+(Slices 2-5). It validates the installation, Loop, Git requirements, and clean
+worktree; selects the eligible task; computes caps; writes RUN_CONTEXT.md;
+launches one Codex Agent-Iteration (codex exec --sandbox workspace-write) with
+the configured timeout; captures stdout.log, stderr.log, gate.stdout.log,
+gate.stderr.log, and progress before/after snapshots under
+runs/<run-id>/agent-iterations/<n>/; detects the outcome keyword; verifies the
+progress transition and writes summary.json; and, for a valid RALPH_NEXT, runs
+the quality gate and creates one Git checkpoint commit on pass (a failed gate is
+a rejection). Rejection stash recovery and the multi-task retry loop land in
+later slices.
 `,
 
   validate: `ralph-loop validate [<loop-name>] [--ralph-dir <path>]

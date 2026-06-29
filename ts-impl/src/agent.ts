@@ -89,6 +89,8 @@ export interface AgentIterationArtifacts {
   dir: string;
   stdoutLog: string;
   stderrLog: string;
+  gateStdoutLog: string;
+  gateStderrLog: string;
   progressBefore: string;
   progressAfter: string;
   summary: string;
@@ -109,6 +111,8 @@ export function agentIterationArtifacts(
     dir,
     stdoutLog: join(dir, "stdout.log"),
     stderrLog: join(dir, "stderr.log"),
+    gateStdoutLog: join(dir, "gate.stdout.log"),
+    gateStderrLog: join(dir, "gate.stderr.log"),
     progressBefore: join(dir, "progress.before.json"),
     progressAfter: join(dir, "progress.after.json"),
     summary: join(dir, "summary.json"),

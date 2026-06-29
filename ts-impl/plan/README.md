@@ -21,7 +21,7 @@ to implement and verify each slice.
 | 02    | [Run Foundations Without Codex Launch](./02-SLICE-run-foundations-no-codex.md)           | verified | 01         | `run demo`; `validate demo`                                           |
 | 03    | [Agent Invocation And Artifact Capture](./03-SLICE-agent-invocation-artifact-capture.md) | verified | 02         | `bun test`; `run demo`                                                |
 | 04    | [Progress Verification](./04-SLICE-progress-verification.md)                             | verified | 03         | `bun test`; `run demo`                                                |
-| 05    | [Quality Gate And Checkpoint Commits](./05-SLICE-quality-gate-checkpoint-commits.md)     | planned | 04         | `bun test`; `run demo`; `git log -1 --oneline`                        |
+| 05    | [Quality Gate And Checkpoint Commits](./05-SLICE-quality-gate-checkpoint-commits.md)     | verified | 04         | `bun test`; `run demo`; `git log -1 --oneline`                        |
 | 06    | [Rejection Stash And Retry Loop](./06-SLICE-rejection-stash-retry-loop.md)               | planned | 05         | `bun test`; `run demo`; `git stash list`                              |
 | 07    | [Multi-Task Run Completion](./07-SLICE-multi-task-run-completion.md)                     | planned | 06         | `bun test`; `run demo`; `loop status demo`                            |
 | 08    | [Final Validation, Docs, And Hardening](./08-SLICE-final-validation-docs-hardening.md)   | planned | 07         | `bun test`; `bun run check`; docs and validate smoke checks           |

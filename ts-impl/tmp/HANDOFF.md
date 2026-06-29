@@ -74,12 +74,14 @@ ts-impl/
       run.ts             Slice 2: run setup (no Codex launch)
     agent.ts             Slice 3: Codex argv, outcome detection, iteration launch
     verify.ts            Slice 4: progress-transition classification + summary.json
+    checkpoint.ts        Slice 5: quality gate + checkpoint commit + orchestration
   test/
     task-spec.test.ts    Slice 0 tests (20 cases)
     slice-01.test.ts     Slice 1 tests (36 cases)
     slice-02.test.ts     Slice 2 tests (9 cases)
     slice-03.test.ts     Slice 3 tests (16 cases)
     slice-04.test.ts     Slice 4 tests (14 cases)
+    slice-05.test.ts     Slice 5 tests (19 cases)
   tmp/
     HANDOFF.md           this file
     demo-tasks/          demo Task Specs for acceptance checks
@@ -150,29 +152,50 @@ bun run src/cli.ts help
   - 14 Slice 4 tests pass. `bun test` 95/95. `bun run check` exit 0.
   - `run demo` in a clean Git repo writes `summary.json` and exits 0.
 
-- Slices 5-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
-- Slice 04 commit lands on branch `claude/impl-ts-handoff-review-ql7xhy`.
+- **Slice 5 (Quality Gate And Checkpoint Commits): VERIFIED.**
+  - `src/checkpoint.ts`: `runQualityGate` (injectable `GateSpawn`, shell command,
+    `qualityGateTimeoutSeconds` via SIGKILL, captures `gate.stdout.log` /
+    `gate.stderr.log`, passes only on exit 0 without timeout),
+    `checkpointCommitMessage` (`ralph: complete <task-id>`),
+    `createCheckpointCommit` (injectable `GitRunner`; `git add -A`, unstages the
+    Loop `runs/` diagnostics unless `commitRunArtifacts`, one commit, returns
+    SHA), and `runQualityGateAndCheckpoint` (orchestrator → `checkpoint` /
+    `rejected` / `done` / `blocked`; only valid `RALPH_NEXT` runs the gate +
+    commits; rewrites `summary.json` with `gate` and `commit`).
+  - `src/agent.ts`: `AgentIterationArtifacts` gains `gateStdoutLog` /
+    `gateStderrLog`.
+  - `src/verify.ts`: `IterationSummary` gains optional `gate` / `commit`.
+  - `src/cli.ts`: `run` runs the gate + checkpoint after verification and reports
+    the gate result, checkpoint action, and commit.
+  - 19 Slice 5 tests pass. `bun test` 107/107. `bun run check` exit 0.
+  - Manual e2e (real repo + fake `codex`): gate `true` → one commit
+    `ralph: complete 001-hello` with work-plane + control-plane state, run
+    diagnostics untracked; gate `false` → rejected, no commit.
+
+- Slices 6-8: `planned`. `src/cli.ts` still returns "pending" for `tasks`.
+- Slice 05 work lands on branch `claude/impl-ts-handoff-review-7zhnll`.
 
 ## Next Action
 
-Start **Slice 5 — Quality Gate And Checkpoint Commits**
-(`ts-impl/plan/05-SLICE-quality-gate-checkpoint-commits.md`).
+Start **Slice 6 — Rejection Stash And Retry Loop**
+(`ts-impl/plan/06-SLICE-rejection-stash-retry-loop.md`).
 
-Scope: for a `valid` `RALPH_NEXT` classification (Slice 4), run the configured
-quality gate in the work plane; on pass, create one Git checkpoint commit
-(work-plane changes + updated `progress.json` + rewritten `HANDOFF.md` + valid
-`KNOWLEDGE.md`; run artifacts only when `commitRunArtifacts` is true). A failed
-quality gate after `RALPH_NEXT` is a rejection (see IMPLEMENTATION.md
-§Verification). Slice 4's `verifyAndSummarize` already returns the classified
-`IterationSummary`; build commit/gate logic on top of it. Stash-based rejection
-recovery is Slice 6.
+Scope: when an Agent-Iteration is rejected (by progress verification in Slice 4
+or a failed/timed-out quality gate in Slice 5), preserve the rejected work via
+`git stash` (including untracked files), record the stable stash commit SHA and
+message in the run summary, restore a clean worktree, and retry the same task up
+to `maxRejectedIterations` before stopping with a rejection failure (EXIT
+`REJECTION_CAP` = 5). Slice 5's `runQualityGateAndCheckpoint` already returns a
+`CheckpointOutcome` with `action: "rejected"`; build stash/retry on top of it.
+Do not rely on `stash@{0}` — record the SHA git returns. Multi-task continuation
+after a checkpoint is Slice 7.
 
 Acceptance checks:
 
 ```bash
 bun test
 bun run src/cli.ts run demo
-git log -1 --oneline
+git stash list
 ```
 
 ## Working Conventions
