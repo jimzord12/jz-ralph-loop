@@ -52,7 +52,7 @@ extract_tokens() {
 }
 
 # detect_flip BEFORE AFTER → echoes "<count> <task_id>" (task_id empty if none).
-# Diffs two PROCESS.md snapshots; counts lines that flipped to a checked box.
+# Diffs two PROGRESS.md snapshots; counts lines that flipped to a checked box.
 # Returns the count and the first flipped task id. Pure (args only).
 detect_flip() {
   local before="$1" after="$2" flips flip_count task_id

@@ -1,4 +1,4 @@
-# Ralph Loop — Process
+# Ralph Loop — Progress
 
 > Status only. One `- [ ]` per task, grouped by phase. The loop picks the FIRST
 > unchecked box each iteration. Edit this file only when decomposing work or

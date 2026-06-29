@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# analytics.sh — render runs/<plan>/analytics/summary.md from timeline.csv + PROCESS.md
+# analytics.sh — render runs/<plan>/analytics/summary.md from timeline.csv + PROGRESS.md
 #
 # usage: analytics.sh <plan_dir> <control_dir> <project>
 # Called by ralph.sh after every iteration (live) and usable standalone.
@@ -9,7 +9,7 @@ PLAN_DIR="${1:?plan_dir required}"
 CTRL="${2:?control_dir required}"
 PROJECT="${3:?project required}"
 CSV="$PLAN_DIR/timeline.csv"
-PROC="$CTRL/PROCESS.md"
+PROC="$CTRL/PROGRESS.md"
 OUT="$PLAN_DIR/analytics/summary.md"
 BARW="${RALPH_BAR_WIDTH:-20}"
 
@@ -17,7 +17,7 @@ mkdir -p "$(dirname "$OUT")"
 
 [ -f "$CSV" ] || { echo "[analytics] no $CSV" >&2; exit 1; }
 
-# Phase progress from PROCESS.md: "phase\tdone\ttotal".
+# Phase progress from PROGRESS.md: "phase\tdone\ttotal".
 phase_file="$(mktemp)"
 if [ -f "$PROC" ]; then
   awk '
@@ -54,7 +54,7 @@ fi
       }
     ' "$phase_file"
   else
-    echo "(no phases parsed from PROCESS.md)"
+    echo "(no phases parsed from PROGRESS.md)"
   fi
   echo '```'
   echo

@@ -43,7 +43,7 @@ tail -f runs/<timestamp>/analytics/summary.md
 ```
 
 Before your first run you decompose the work into tasks (see
-[§ Writing tasks](#writing-tasks)) and register them in `PROCESS.md`. The loop
+[§ Writing tasks](#writing-tasks)) and register them in `PROGRESS.md`. The loop
 **never decomposes** — it only executes.
 
 ### Environment variables
@@ -81,7 +81,7 @@ jz-ralph-loop/
   ralph.sh         # the bash loop driver
   analytics.sh     # renders runs/<plan>/analytics/summary.md
   AGENTS.md        # per-iteration protocol the spawned omp reads first (THE contract)
-  PROCESS.md       # status only: one checkbox per task, grouped by phase
+  PROGRESS.md       # status only: one checkbox per task, grouped by phase
   HANDOFF.md       # transient; REWRITTEN each iteration (in-flight state)
   KNOWLEDGE.md     # durable; append-only pitfall ledger (kept <~30 lines)
   tasks/
@@ -101,12 +101,12 @@ jz-ralph-loop/
 
 ## How one iteration works (`ralph.sh`)
 
-1. Pre-flight: asserts `AGENTS.md`, `PROCESS.md`, `HANDOFF.md`, `KNOWLEDGE.md`
+1. Pre-flight: asserts `AGENTS.md`, `PROGRESS.md`, `HANDOFF.md`, `KNOWLEDGE.md`
    exist (exit `1` if any is missing). Creates a fresh `runs/<UTC>/` plan dir,
    snapshots the project's `HEAD` as the churn baseline, writes the
    `timeline.csv` header.
 2. For each iteration (up to `RALPH_MAX_ITERS`):
-   - Copies `PROCESS.md` to `.process.N.before` (to detect which box flips).
+   - Copies `PROGRESS.md` to `.progress.N.before` (to detect which box flips).
    - Spawns **one** fresh omp:
      ```bash
      omp -p --no-session --auto-approve --cwd "$PROJECT" \
@@ -115,7 +115,7 @@ jz-ralph-loop/
      ```
    - Scans the iteration log for a keyword (first match wins, **BLOCKED** has
      priority) → records the outcome.
-   - Diffs `PROCESS.md` before/after to derive the `task_id` + `phase` of the
+   - Diffs `PROGRESS.md` before/after to derive the `task_id` + `phase` of the
      flipped box; computes cumulative git churn; appends a `timeline.csv` row;
      refreshes the analytics summary (non-fatal).
    - Acts on the outcome (see contract below).
@@ -134,7 +134,7 @@ and suspenders). Hitting `RALPH_MAX_ITERS` exits `3` — the runaway guard.
 
 ### The per-iteration protocol (see `AGENTS.md` for the binding version)
 
-1. Read `PROCESS.md` → first `- [ ]` task. If none → rewrite a final
+1. Read `PROGRESS.md` → first `- [ ]` task. If none → rewrite a final
    `HANDOFF.md`, print `RALPH_DONE`.
 2. Read that task spec fully; read `HANDOFF.md` + `KNOWLEDGE.md`.
 3. Implement **one** task (TDD where the task implies it; scope strictly).
@@ -155,7 +155,7 @@ and suspenders). Hitting `RALPH_MAX_ITERS` exits `3` — the runaway guard.
 | File | Mutability | Content |
 |---|---|---|
 | task spec (`tasks/0NN-*.md`) | **immutable at runtime** | Goal / Context / Acceptance / Notes |
-| `PROCESS.md` | status only | one `- [ ]`/`- [x]` per task, grouped by phase |
+| `PROGRESS.md` | status only | one `- [ ]`/`- [x]` per task, grouped by phase |
 | `HANDOFF.md` | **rewritten** each iteration | transient in-flight state |
 | `KNOWLEDGE.md` | **append-only** | durable pitfall ledger (prune past ~30 lines) |
 
@@ -175,10 +175,10 @@ TDD-where-applicable.
 - Frontmatter: `id`, `phase`, `depends_on: [...]`, `estimate: ~45m`.
 - Body: `## Goal` · `## Context` · `## Acceptance criteria` (`- [ ]` items) ·
   `## Notes` — copy `tasks/_TEMPLATE.md`.
-- Register each task as one line in `PROCESS.md` under its phase:
+- Register each task as one line in `PROGRESS.md` under its phase:
   `- [ ] 0NN-<slug> → tasks/0NN-<slug>.md`.
 
-`PROCESS.md` order *is* execution order — the loop always takes the first
+`PROGRESS.md` order *is* execution order — the loop always takes the first
 `- [ ]`. Reorder only when decomposing, never at runtime.
 
 ---
@@ -192,8 +192,8 @@ iteration the driver appends a `timeline.csv` row and regenerates
 `timeline.csv` columns:
 `iter,start_iso,end_iso,dur_s,outcome,task_id,phase,nfiles,ins,del,tokens`
 
-- `task_id` / `phase` — derived by diffing `PROCESS.md` before → after the
-  iteration (whichever box flipped). HTML-comment blocks in `PROCESS.md` are
+- `task_id` / `phase` — derived by diffing `PROGRESS.md` before → after the
+  iteration (whichever box flipped). HTML-comment blocks in `PROGRESS.md` are
   skipped, so commented-out examples aren't counted.
 - `nfiles` / `ins` / `del` — cumulative `git diff --numstat` vs the `HEAD`
   captured at loop start; the summary computes true per-iteration deltas.
@@ -223,13 +223,13 @@ independently verifies every non-`BLOCKED` iteration:
 
 - **gate re-run + uncheck on red** (`RALPH_VERIFY_GATES=1`, default): after each
   iteration the loop re-runs `RALPH_GATE_CMD` in the project; on red it restores
-  `PROCESS.md` from the pre-iteration snapshot (un-checking the box the agent just
+  `PROGRESS.md` from the pre-iteration snapshot (un-checking the box the agent just
   flipped) and records `outcome=RED`, so a broken or dishonest iteration cannot
   leave a checked box — the task retries next iteration. Set
   `RALPH_VERIFY_GATES=0` to trust the agent self-report (faster, weaker).
 - **exactly-one-box-flipped assertion**: `NEXT` must flip exactly one box,
   `DONE`/`NONE` must flip zero; any other count records `outcome=ANOMALY`,
-  restores `PROCESS.md`, and retries. (`BLOCKED` exits 2 regardless; a `BLOCKED`
+  restores `PROGRESS.md`, and retries. (`BLOCKED` exits 2 regardless; a `BLOCKED`
   agent that nonetheless flipped still has its box restored.)
 - **`--mode json` token accounting** (`RALPH_MODE=json`, opt-in): spawns omp under
   `--mode=json` and sums `usage.totalTokens` per iteration into `timeline.csv`.
@@ -259,7 +259,7 @@ revertable checkpoint per task, so `git log --oneline` reads as a task ledger an
   otherwise).
 - **Wrong gates / wrong stack** — set `RALPH_GATE_CMD` to your project's verify
   command. The default assumes an npm/TypeScript project.
-- **First iteration picks the wrong task** — `PROCESS.md` order *is* execution
+- **First iteration picks the wrong task** — `PROGRESS.md` order *is* execution
   order; the loop always takes the first `- [ ]`. Reorder only when decomposing,
   never at runtime.
 
@@ -295,7 +295,7 @@ RALPH_TEST_MODEL=glm-4.5-flash RUN_LIVE_AI=1 ./test/run_tests.sh        # pin a 
 ```
 
 The live run builds a throwaway control + work plane in a temp dir (the repo's
-own `PROCESS.md` is never touched), so it is safe to re-run.
+own `PROGRESS.md` is never touched), so it is safe to re-run.
 
 ## Origin
 

@@ -28,13 +28,13 @@ PROJ="$WORK/project"
 mkdir -p "$CTRL/tasks" "$PROJ"
 
 # Copy the real committed loop into the throwaway control plane so $DIR resolves
-# to the sandbox (the repo's own PROCESS.md is never touched).
+# to the sandbox (the repo's own PROGRESS.md is never touched).
 cp "$ROOT/ralph.sh" "$ROOT/analytics.sh" "$ROOT/lib.sh" "$ROOT/AGENTS.md" "$CTRL/"
 chmod +x "$CTRL/ralph.sh" "$CTRL/analytics.sh"
 
 # --- control plane: a one-task plan ---
-cat > "$CTRL/PROCESS.md" <<'EOF'
-# Ralph Loop — Process
+cat > "$CTRL/PROGRESS.md" <<'EOF'
+# Ralph Loop — Progress
 
 ## Phase: Hello
 - [ ] 001-say-hello → tasks/001-say-hello.md
@@ -109,10 +109,10 @@ else
   echo "live: FAIL expected exit 0 (DONE), got $RC"; FAIL=1
 fi
 # 2. the one checkbox flipped to [x]
-if grep -q -- '- \[x\] 001-say-hello' "$CTRL/PROCESS.md"; then
+if grep -q -- '- \[x\] 001-say-hello' "$CTRL/PROGRESS.md"; then
   echo "live: ok  box flipped -> [x] 001-say-hello"
 else
-  echo "live: FAIL box was not flipped in PROCESS.md"; FAIL=1
+  echo "live: FAIL box was not flipped in PROGRESS.md"; FAIL=1
 fi
 # 3. the deliverable landed with the right content
 if [ -f "$PROJ/hello.txt" ]; then

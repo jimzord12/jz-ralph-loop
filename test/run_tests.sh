@@ -141,7 +141,7 @@ analytics_tests() {
     printf '1,2026-01-01T00:00:00Z,2026-01-01T00:03:00Z,180,NEXT,001-a,Setup,3,120,12,\n'
     printf '2,2026-01-01T00:03:00Z,2026-01-01T00:09:00Z,360,DONE,,,6,520,42,\n'
   } > "$plan/timeline.csv"
-  printf '# Ralph Loop — Process\n\n## Phase: Setup\n- [x] 001-a\n' > "$ctrl/PROCESS.md"
+  printf '# Ralph Loop — Progress\n\n## Phase: Setup\n- [x] 001-a\n' > "$ctrl/PROGRESS.md"
 
   bash "$ROOT/analytics.sh" "$plan" "$ctrl" "/tmp/fake" >/dev/null 2>&1
   out="$plan/analytics/summary.md"

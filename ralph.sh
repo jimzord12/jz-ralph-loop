@@ -46,7 +46,7 @@ OMP_MODEL_ARGS=()
 VERIFY_GATES="${RALPH_VERIFY_GATES:-1}"
 GATE_CMD="${RALPH_GATE_CMD:-npm test && npm run typecheck}"
 
-for f in AGENTS.md PROCESS.md HANDOFF.md KNOWLEDGE.md; do
+for f in AGENTS.md PROGRESS.md HANDOFF.md KNOWLEDGE.md; do
   [ -f "$DIR/$f" ] || { echo "[ralph] missing control file $DIR/$f" >&2; exit 1; }
 done
 
@@ -80,15 +80,15 @@ iter=0
 while [ "$iter" -lt "$MAX_ITERS" ]; do
   iter=$((iter + 1))
   log="$PLAN_DIR/$(printf '%03d' "$iter").log"
-  before="$PLAN_DIR/.process.${iter}.before"
-  cp "$DIR/PROCESS.md" "$before" 2>/dev/null || true
+  before="$PLAN_DIR/.progress.${iter}.before"
+  cp "$DIR/PROGRESS.md" "$before" 2>/dev/null || true
 
   start_iso="$(date -u +%FT%TZ)"; start_s="$(date +%s)"
   echo "[ralph] iter $iter → $log"
 
   set +e
   "$OMP" -p --no-session --auto-approve "${OMP_MODE_ARGS[@]}" "${OMP_MODEL_ARGS[@]}" --cwd "$PROJECT" \
-    "You are ONE iteration of a Ralph loop. CONTROL_DIR is $DIR. Read and follow the protocol at $DIR/AGENTS.md exactly. Control files (PROCESS.md, HANDOFF.md, KNOWLEDGE.md, tasks/) live in CONTROL_DIR. Your work target is the current working directory; make code changes there. The project's quality gates are: \`$GATE_CMD\`." \
+    "You are ONE iteration of a Ralph loop. CONTROL_DIR is $DIR. Read and follow the protocol at $DIR/AGENTS.md exactly. Control files (PROGRESS.md, HANDOFF.md, KNOWLEDGE.md, tasks/) live in CONTROL_DIR. Your work target is the current working directory; make code changes there. The project's quality gates are: \`$GATE_CMD\`." \
     > "$log" 2>&1
   rc=$?
   set -e
@@ -104,13 +104,13 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   outcome="$(detect_outcome "$log")"
   kw="$outcome"
 
-  # Which box(es) flipped? (diff PROCESS.md before → after). Asserts the flip
+  # Which box(es) flipped? (diff PROGRESS.md before → after). Asserts the flip
   # count matches the outcome: NEXT requires exactly 1; DONE/BLOCKED/NONE require
   # 0; >1 is always wrong (AGENTS.md "never check more than one box").
-  read -r flip_count task_id <<< "$(detect_flip "$before" "$DIR/PROCESS.md")"
+  read -r flip_count task_id <<< "$(detect_flip "$before" "$DIR/PROGRESS.md")"
 
-  # Phase = the "## Phase:" header above the task line in PROCESS.md.
-  phase="$(detect_phase "$DIR/PROCESS.md" "$task_id")"
+  # Phase = the "## Phase:" header above the task line in PROGRESS.md.
+  phase="$(detect_phase "$DIR/PROGRESS.md" "$task_id")"
 
   # Loop re-runs the gates + unchecks on red. The agent self-runs them
   # (AGENTS.md step 5) but its self-report is the only evidence; this is the
@@ -138,7 +138,7 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
 
   # Loop verdict: RED/ANOMALY override the agent's self-report. RED = the tree is
   # genuinely broken; ANOMALY = the box-flip count violates the one-box rule. On
-  # either, restore PROCESS.md from the pre-iteration snapshot so the box is
+  # either, restore PROGRESS.md from the pre-iteration snapshot so the box is
   # unchecked and the task retries next iteration (the agent's commit, if any,
   # stays in git as a forensic record; it is not auto-reverted).
   rejected=0
@@ -149,11 +149,11 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   # below) but still restore the box so the ledger isn't corrupted.
   if [ "$kw" = "BLOCKED" ] && [ "$flip_count" -gt 0 ]; then
     rejected=1
-    echo "[ralph] iter $iter: BLOCKED with $flip_count flip(s) — restoring PROCESS.md" >&2
+    echo "[ralph] iter $iter: BLOCKED with $flip_count flip(s) — restoring PROGRESS.md" >&2
   fi
   if [ "$rejected" -eq 1 ]; then
-    [ -f "$before" ] && cp "$before" "$DIR/PROCESS.md" || true
-    echo "[ralph] REJECT iter $iter outcome=$outcome (kw=$kw flips=$flip_count) — restored PROCESS.md; task will retry next iteration" >&2
+    [ -f "$before" ] && cp "$before" "$DIR/PROGRESS.md" || true
+    echo "[ralph] REJECT iter $iter outcome=$outcome (kw=$kw flips=$flip_count) — restored PROGRESS.md; task will retry next iteration" >&2
   fi
 
   read -r nfiles ins del <<< "$(churn)"

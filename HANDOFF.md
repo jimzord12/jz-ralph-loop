@@ -10,5 +10,5 @@ _(first iteration: nothing yet — this is a fresh plan)_
 -
 
 ## Next agent — do this first
-- Read `PROCESS.md`, take the FIRST unchecked task, read its spec, then follow
+- Read `PROGRESS.md`, take the FIRST unchecked task, read its spec, then follow
   `AGENTS.md`.
