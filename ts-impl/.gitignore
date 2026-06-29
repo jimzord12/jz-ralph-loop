@@ -1,1 +1,4 @@
 node_modules/
+
+# Ralph installation created during local testing / acceptance checks
+.jz-ralph/

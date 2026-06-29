@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 
-import { stat } from "node:fs/promises";
 import { join } from "node:path";
+import { EXIT, RalphError } from "./errors.js";
+import { isInsideGitRepo, runInit } from "./commands/init.js";
+import { getDocs } from "./commands/docs.js";
+import { runLoopCreate, runLoopList, runLoopStatus } from "./commands/loop.js";
+import { validateInstallation, validateLoop } from "./commands/validate.js";
 
 type CliCommand = "init" | "loop" | "tasks" | "run" | "validate" | "docs" | "help";
 
@@ -21,12 +25,10 @@ Usage:
   ralph-loop tasks normalize --from <task-source-dir> --to <normalized-task-source-dir>
   ralph-loop run <loop-name> [--ralph-dir <path>]
   ralph-loop validate [<loop-name>] [--ralph-dir <path>]
-  ralph-loop docs
-  ralph-loop docs <doc-section>
+  ralph-loop docs [<section>]
   ralph-loop help
 
-Status:
-  This TypeScript CLI scaffold is ready for the approved implementation slices in plan/README.md.
+Run "ralph-loop docs" for detailed documentation.
 `;
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -73,7 +75,7 @@ function normalizeCommand(command: string): CliCommand {
     return command;
   }
 
-  throw new Error(`Unknown command: ${command}`);
+  throw new RalphError(`Unknown command: ${command}`, EXIT.USAGE_ERROR);
 }
 
 function getStringFlag(flags: Map<string, string | true>, key: string): string | undefined {
@@ -88,7 +90,7 @@ function getStringFlag(flags: Map<string, string | true>, key: string): string |
 function requireStringFlag(flags: Map<string, string | true>, key: string): string {
   const value = getStringFlag(flags, key);
   if (!value) {
-    throw new Error(`Missing required flag: --${key}`);
+    throw new RalphError(`Missing required flag: --${key}`, EXIT.USAGE_ERROR);
   }
 
   return value;
@@ -98,118 +100,125 @@ function getRalphDir(flags: Map<string, string | true>): string {
   return getStringFlag(flags, "ralph-dir") ?? ".jz-ralph";
 }
 
-async function validateInstallation(ralphDir: string): Promise<void> {
-  const requiredFiles = ["config.json", "AGENTS.md", "KNOWLEDGE.md"];
-  const missing: string[] = [];
-
-  for (const entry of requiredFiles) {
-    try {
-      const info = await stat(join(ralphDir, entry));
-      if (!info.isFile()) {
-        missing.push(entry);
-      }
-    } catch {
-      missing.push(entry);
-    }
-  }
-
-  try {
-    const info = await stat(join(ralphDir, "loops"));
-    if (!info.isDirectory()) {
-      missing.push("loops");
-    }
-  } catch {
-    missing.push("loops");
-  }
-
-  if (missing.length > 0) {
-    throw new Error(`Ralph installation is missing: ${missing.join(", ")}`);
-  }
-}
-
-async function validateLoop(ralphDir: string, loopName: string): Promise<void> {
-  const loopDir = join(ralphDir, "loops", loopName);
-  const requiredFiles = ["loop.json", "progress.json", "HANDOFF.md"];
-  const missing: string[] = [];
-
-  for (const entry of requiredFiles) {
-    try {
-      const info = await stat(join(loopDir, entry));
-      if (!info.isFile()) {
-        missing.push(entry);
-      }
-    } catch {
-      missing.push(entry);
-    }
-  }
-
-  try {
-    const info = await stat(join(loopDir, "tasks"));
-    if (!info.isDirectory()) {
-      missing.push("tasks");
-    }
-  } catch {
-    missing.push("tasks");
-  }
-
-  if (missing.length > 0) {
-    throw new Error(`Loop "${loopName}" is missing: ${missing.join(", ")}`);
-  }
-}
-
 async function main(): Promise<number> {
   const parsed = parseArgs(Bun.argv.slice(2));
 
+  // help
   if (parsed.command === "help") {
     console.log(HELP);
-    return 0;
+    return EXIT.SUCCESS;
   }
 
+  // docs
+  if (parsed.command === "docs") {
+    const content = getDocs(parsed.positionals);
+    if (content === undefined) {
+      const section = parsed.positionals.join(" ");
+      console.error(`Unknown docs section: ${section}`);
+      console.error('Run "ralph-loop docs" for the section index.');
+      return EXIT.USAGE_ERROR;
+    }
+    console.log(content);
+    return EXIT.SUCCESS;
+  }
+
+  // init
+  if (parsed.command === "init") {
+    const ralphDir = getRalphDir(parsed.flags);
+    const cwd = process.cwd();
+    await runInit(ralphDir, cwd);
+    console.log(`Ralph initialized in ${ralphDir}/\n`);
+    console.log("Next:");
+    console.log("  ralph-loop docs");
+    console.log("  ralph-loop docs <doc-section>");
+    console.log("  ralph-loop docs examples simple");
+    console.log("  ralph-loop loop create --name <loop-name> --from <task-source-dir>");
+    console.log("  ralph-loop run <loop-name>");
+    return EXIT.SUCCESS;
+  }
+
+  // validate
   if (parsed.command === "validate") {
     const ralphDir = getRalphDir(parsed.flags);
     await validateInstallation(ralphDir);
     const loopName = parsed.positionals[0];
     if (loopName) {
       await validateLoop(ralphDir, loopName);
-      console.log(`Ralph loop "${loopName}" is valid.`);
-      return 0;
+      console.log(`Loop "${loopName}" is valid.`);
+      return EXIT.SUCCESS;
+    }
+    console.log("Ralph installation is valid.");
+    return EXIT.SUCCESS;
+  }
+
+  // loop subcommands
+  if (parsed.command === "loop") {
+    const ralphDir = getRalphDir(parsed.flags);
+    const sub = parsed.positionals[0];
+
+    if (sub === "create") {
+      const name = requireStringFlag(parsed.flags, "name");
+      const fromDir = requireStringFlag(parsed.flags, "from");
+      await runLoopCreate(ralphDir, name, fromDir);
+      console.log(`Loop "${name}" created in ${join(ralphDir, "loops", name)}/`);
+      return EXIT.SUCCESS;
     }
 
-    console.log("Ralph installation is valid.");
-    return 0;
+    if (sub === "list") {
+      const loops = await runLoopList(ralphDir);
+      if (loops.length === 0) {
+        console.log("No loops found.");
+      } else {
+        for (const name of loops) {
+          console.log(name);
+        }
+      }
+      return EXIT.SUCCESS;
+    }
+
+    if (sub === "status") {
+      const loopName = parsed.positionals[1];
+      if (!loopName) {
+        throw new RalphError("Missing loop name. Usage: ralph-loop loop status <loop-name>", EXIT.USAGE_ERROR);
+      }
+      const status = await runLoopStatus(ralphDir, loopName);
+      console.log(`Loop: ${status.name}`);
+      console.log(
+        `Tasks: ${status.total} total | ${status.complete} complete | ${status.pending} pending | ${status.blocked} blocked`,
+      );
+      console.log(`Eligible: ${status.eligibleTaskId ?? "none"}`);
+      return EXIT.SUCCESS;
+    }
+
+    throw new RalphError(
+      `Unknown loop subcommand: ${sub ?? "(none)"}. Try: create, list, status`,
+      EXIT.USAGE_ERROR,
+    );
   }
 
-  if (
-    parsed.command === "init" ||
-    parsed.command === "loop" ||
-    parsed.command === "tasks" ||
-    parsed.command === "docs"
-  ) {
+  // tasks subcommands (pending)
+  if (parsed.command === "tasks") {
     console.log("Command is intentionally pending its approved implementation slice.");
-    return 2;
+    return EXIT.USAGE_ERROR;
   }
 
-  const ralphDir = getRalphDir(parsed.flags);
-  const loopName = parsed.positionals[0];
-  if (!loopName) {
-    throw new Error("Missing required loop name.");
+  // run (pending)
+  if (parsed.command === "run") {
+    console.log("Command is intentionally pending its approved implementation slice.");
+    return EXIT.USAGE_ERROR;
   }
 
-  await validateInstallation(ralphDir);
-  await validateLoop(ralphDir, loopName);
-
-  console.log("Ralph loop TypeScript runner scaffold");
-  console.log(`ralphDir: ${ralphDir}`);
-  console.log(`loopName: ${loopName}`);
-  console.log("Run behavior is intentionally pending the v1 decisions in IMPLEMENTATION.md.");
-
-  return 2;
+  return EXIT.SUCCESS;
 }
 
 try {
   const exitCode = await main();
   process.exit(exitCode);
 } catch (error) {
+  if (error instanceof RalphError) {
+    console.error(error.message);
+    process.exit(error.exitCode);
+  }
   console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
+  process.exit(EXIT.RUNNER_ERROR);
 }

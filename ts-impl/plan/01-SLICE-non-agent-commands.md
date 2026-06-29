@@ -70,4 +70,15 @@ bun run src/cli.ts loop status demo
 
 ## Completion Notes
 
-Pending.
+Implemented and verified. All 7 acceptance checks pass; `bun test` 56/56 pass;
+`bun run check` exit 0.
+
+New files:
+- `src/errors.ts` — `RalphError` class and `EXIT` codes map.
+- `src/commands/init.ts` — `runInit` + `isInsideGitRepo`.
+- `src/commands/docs.ts` — `getDocs` with all 21 sections and `exit-codes` alias.
+- `src/commands/loop.ts` — `runLoopCreate`, `runLoopList`, `runLoopStatus`.
+- `src/commands/validate.ts` — `validateInstallation`, `validateLoop` (expanded
+  with JSON/schema validation for config.json, progress.json, and task files).
+- `test/slice-01.test.ts` — 36 tests covering all commands.
+- `tmp/demo-tasks/` — two demo Task Spec files for acceptance checks.
