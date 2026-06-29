@@ -2,8 +2,8 @@
 # test/e2e/live_ai.sh — real-AI end-to-end test.
 #
 # Builds a throwaway control plane + work plane in a temp dir, copies in the
-# ACTUAL committed ralph.sh/analytics.sh/lib.sh/AGENTS.md, and drives a real
-# omp + Zai GLM model on a one-task sandbox. Asserts the loop reaches RALPH_DONE
+# ACTUAL committed ralph.sh/analytics.sh/lib.sh plus example AGENTS.md, and
+# drives a real omp + Zai GLM model on a one-task sandbox. Asserts the loop reaches RALPH_DONE
 # (exit 0), flips the checkbox, and lands the deliverable.
 #
 # Opt-in: only runs when RUN_LIVE_AI=1. Needs: omp on PATH, ZAI_API_KEY set,
@@ -27,9 +27,9 @@ CTRL="$WORK/control"
 PROJ="$WORK/project"
 mkdir -p "$CTRL/tasks" "$PROJ"
 
-# Copy the real committed loop into the throwaway control plane so $DIR resolves
-# to the sandbox (the repo's own PROGRESS.md is never touched).
-cp "$ROOT/ralph.sh" "$ROOT/analytics.sh" "$ROOT/lib.sh" "$ROOT/AGENTS.md" "$CTRL/"
+# Copy the real committed loop into the throwaway control plane so the default
+# RALPH_CONTROL_DIR resolves to the sandbox. The repo example is never touched.
+cp "$ROOT/ralph.sh" "$ROOT/analytics.sh" "$ROOT/lib.sh" "$ROOT/examples/control-plane/AGENTS.md" "$CTRL/"
 chmod +x "$CTRL/ralph.sh" "$CTRL/analytics.sh"
 
 # --- control plane: a one-task plan ---

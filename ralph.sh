@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # ralph.sh — drives a Ralph loop: one `omp -p` iteration per unchecked task.
 #
-# Control files live in THIS directory (the control plane). The work target is
-# $RALPH_PROJECT (default: the parent directory). Logs + analytics land in
-# runs/<UTC-timestamp>/ — one dir per invocation.
+# Control files live in $RALPH_CONTROL_DIR. The work target is $RALPH_PROJECT
+# (default: the parent of the control directory). Logs + analytics land in
+# $RALPH_CONTROL_DIR/runs/<UTC-timestamp>/ — one dir per invocation.
 #
 # Pure helpers (detect_outcome, detect_flip, detect_phase, churn, extract_tokens)
 # live in lib.sh alongside this script — sourced below and unit-tested under
 # test/.
 #
 # Env:
-#   RALPH_PROJECT    project to work on (default: parent of this dir)
+#   RALPH_CONTROL_DIR directory containing AGENTS.md/PROGRESS.md/HANDOFF.md/
+#                    KNOWLEDGE.md/tasks (default: directory containing ralph.sh)
+#   RALPH_PROJECT    project to work on (default: parent of RALPH_CONTROL_DIR)
 #   RALPH_MAX_ITERS  hard cap on iterations (default: 50)
 #   RALPH_OMP        omp binary (default: omp)
 #   RALPH_MODEL      omp model to spawn (default: omp's configured default). Fuzzy
@@ -28,11 +30,13 @@
 #                    stacks, e.g. `cargo test`, `pytest -q`, `go build ./... && go test ./...`
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
-source "$DIR/lib.sh"
+source "$SCRIPT_DIR/lib.sh"
 
-PROJECT="${RALPH_PROJECT:-$(cd "$DIR/.." && pwd)}"
+CONTROL_DIR="${RALPH_CONTROL_DIR:-$SCRIPT_DIR}"
+CONTROL_DIR="$(cd "$CONTROL_DIR" && pwd)"
+PROJECT="${RALPH_PROJECT:-$(cd "$CONTROL_DIR/.." && pwd)}"
 MAX_ITERS="${RALPH_MAX_ITERS:-50}"
 OMP="${RALPH_OMP:-omp}"
 
@@ -47,15 +51,16 @@ VERIFY_GATES="${RALPH_VERIFY_GATES:-1}"
 GATE_CMD="${RALPH_GATE_CMD:-npm test && npm run typecheck}"
 
 for f in AGENTS.md PROGRESS.md HANDOFF.md KNOWLEDGE.md; do
-  [ -f "$DIR/$f" ] || { echo "[ralph] missing control file $DIR/$f" >&2; exit 1; }
+  [ -f "$CONTROL_DIR/$f" ] || { echo "[ralph] missing control file $CONTROL_DIR/$f" >&2; exit 1; }
 done
 
 # One plan dir per invocation.
-PLAN_DIR="$DIR/runs/$(date -u +%Y%m%dT%H%M%SZ)"
+PLAN_DIR="$CONTROL_DIR/runs/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$PLAN_DIR/analytics"
-mkdir -p "$DIR/runs"
+mkdir -p "$CONTROL_DIR/runs"
 
-echo "[ralph] control: $DIR"
+echo "[ralph] control: $CONTROL_DIR"
+echo "[ralph] tool:    $SCRIPT_DIR"
 echo "[ralph] project: $PROJECT"
 echo "[ralph] plan:    $PLAN_DIR"
 echo "[ralph] cap:     $MAX_ITERS iterations"
@@ -69,7 +74,7 @@ if git -C "$PROJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
 fi
 printf '%s\n' "$BASE_HEAD" > "$PLAN_DIR/.base_head"
 
-MASTER="$DIR/runs/RALPH.log"
+MASTER="$CONTROL_DIR/runs/RALPH.log"
 printf '%s plan=%s project=%s started=%s\n' "$(date -u +%FT%TZ)" "$PLAN_DIR" "$PROJECT" "$(date -u +%FT%TZ)" >> "$MASTER"
 
 # timeline.csv header.
@@ -81,14 +86,14 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   iter=$((iter + 1))
   log="$PLAN_DIR/$(printf '%03d' "$iter").log"
   before="$PLAN_DIR/.progress.${iter}.before"
-  cp "$DIR/PROGRESS.md" "$before" 2>/dev/null || true
+  cp "$CONTROL_DIR/PROGRESS.md" "$before" 2>/dev/null || true
 
   start_iso="$(date -u +%FT%TZ)"; start_s="$(date +%s)"
   echo "[ralph] iter $iter → $log"
 
   set +e
   "$OMP" -p --no-session --auto-approve "${OMP_MODE_ARGS[@]}" "${OMP_MODEL_ARGS[@]}" --cwd "$PROJECT" \
-    "You are ONE iteration of a Ralph loop. CONTROL_DIR is $DIR. Read and follow the protocol at $DIR/AGENTS.md exactly. Control files (PROGRESS.md, HANDOFF.md, KNOWLEDGE.md, tasks/) live in CONTROL_DIR. Your work target is the current working directory; make code changes there. The project's quality gates are: \`$GATE_CMD\`." \
+    "You are ONE iteration of a Ralph loop. CONTROL_DIR is $CONTROL_DIR. Read and follow the protocol at $CONTROL_DIR/AGENTS.md exactly. Control files (PROGRESS.md, HANDOFF.md, KNOWLEDGE.md, tasks/) live in CONTROL_DIR. Your work target is the current working directory; make code changes there. The project's quality gates are: \`$GATE_CMD\`." \
     > "$log" 2>&1
   rc=$?
   set -e
@@ -107,10 +112,10 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   # Which box(es) flipped? (diff PROGRESS.md before → after). Asserts the flip
   # count matches the outcome: NEXT requires exactly 1; DONE/BLOCKED/NONE require
   # 0; >1 is always wrong (AGENTS.md "never check more than one box").
-  read -r flip_count task_id <<< "$(detect_flip "$before" "$DIR/PROGRESS.md")"
+  read -r flip_count task_id <<< "$(detect_flip "$before" "$CONTROL_DIR/PROGRESS.md")"
 
   # Phase = the "## Phase:" header above the task line in PROGRESS.md.
-  phase="$(detect_phase "$DIR/PROGRESS.md" "$task_id")"
+  phase="$(detect_phase "$CONTROL_DIR/PROGRESS.md" "$task_id")"
 
   # Loop re-runs the gates + unchecks on red. The agent self-runs them
   # (AGENTS.md step 5) but its self-report is the only evidence; this is the
@@ -152,7 +157,7 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
     echo "[ralph] iter $iter: BLOCKED with $flip_count flip(s) — restoring PROGRESS.md" >&2
   fi
   if [ "$rejected" -eq 1 ]; then
-    [ -f "$before" ] && cp "$before" "$DIR/PROGRESS.md" || true
+    [ -f "$before" ] && cp "$before" "$CONTROL_DIR/PROGRESS.md" || true
     echo "[ralph] REJECT iter $iter outcome=$outcome (kw=$kw flips=$flip_count) — restored PROGRESS.md; task will retry next iteration" >&2
   fi
 
@@ -167,11 +172,11 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
     "$(date -u +%FT%TZ)" "$PLAN_DIR" "$iter" "$outcome" "${task_id:--}" "$dur" "$rc" >> "$MASTER"
 
   # Live analytics refresh (never fatal to the loop).
-  bash "$DIR/analytics.sh" "$PLAN_DIR" "$DIR" "$PROJECT" >/dev/null 2>&1 || true
+  bash "$SCRIPT_DIR/analytics.sh" "$PLAN_DIR" "$CONTROL_DIR" "$PROJECT" >/dev/null 2>&1 || true
 
   case "$outcome" in
     BLOCKED)
-      echo "[ralph] BLOCKED at iter $iter (rc=$rc) — see $log and $DIR/HANDOFF.md"
+      echo "[ralph] BLOCKED at iter $iter (rc=$rc) — see $log and $CONTROL_DIR/HANDOFF.md"
       exit 2 ;;
     DONE)
       echo "[ralph] DONE at iter $iter (rc=$rc) — see $PLAN_DIR/analytics/summary.md"
@@ -179,6 +184,6 @@ while [ "$iter" -lt "$MAX_ITERS" ]; do
   esac
 done
 
-bash "$DIR/analytics.sh" "$PLAN_DIR" "$DIR" "$PROJECT" >/dev/null 2>&1 || true
+bash "$SCRIPT_DIR/analytics.sh" "$PLAN_DIR" "$CONTROL_DIR" "$PROJECT" >/dev/null 2>&1 || true
 echo "[ralph] hit MAX_ITERS=$MAX_ITERS (possible runaway) — see $PLAN_DIR"
 exit 3

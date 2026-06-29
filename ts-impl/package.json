@@ -1,0 +1,19 @@
+{
+  "name": "ralph-loop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ralph-loop": "./src/cli.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/cli.ts",
+    "start": "bun run src/cli.ts",
+    "check": "bunx tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.8.3"
+  }
+}

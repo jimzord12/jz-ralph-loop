@@ -29,8 +29,10 @@ flowchart LR
 ## Quick start
 
 ```bash
-# 1. Drop this repo next to (or inside) the project you want to drive.
-# 2. Tell the loop where the project is and what its gates are, then run:
+# 1. Create or copy a control plane. This repo ships an example at
+#    examples/control-plane.
+# 2. Tell the loop where the control plane and project are, then run:
+RALPH_CONTROL_DIR="$PWD/examples/control-plane" \
 RALPH_PROJECT="$HOME/code/my-app" \
 RALPH_GATE_CMD="npm test && npm run typecheck" \
 ./ralph.sh
@@ -39,18 +41,19 @@ RALPH_GATE_CMD="npm test && npm run typecheck" \
 Watch progress live (regenerated after every iteration):
 
 ```bash
-tail -f runs/<timestamp>/analytics/summary.md
+tail -f examples/control-plane/runs/<timestamp>/analytics/summary.md
 ```
 
 Before your first run you decompose the work into tasks (see
-[§ Writing tasks](#writing-tasks)) and register them in `PROGRESS.md`. The loop
-**never decomposes** — it only executes.
+[§ Writing tasks](#writing-tasks)) and register them in the control plane's
+`PROGRESS.md`. The loop **never decomposes** — it only executes.
 
 ### Environment variables
 
 | Var | Default | Meaning |
 |---|---|---|
-| `RALPH_PROJECT` | parent of `ralph.sh` | the work target (code changes land here; `--cwd` for the spawn) |
+| `RALPH_CONTROL_DIR` | directory containing `ralph.sh` | directory containing `AGENTS.md`, `PROGRESS.md`, `HANDOFF.md`, `KNOWLEDGE.md`, and `tasks/`; set this explicitly when using the checked-in example or a generated control plane |
+| `RALPH_PROJECT` | parent of `RALPH_CONTROL_DIR` | the work target (code changes land here; `--cwd` for the spawn) |
 | `RALPH_MAX_ITERS` | `50` | hard cap on iterations; hitting it exits `3` (runaway guard) |
 | `RALPH_OMP` | `omp` | the omp binary to invoke |
 | `RALPH_MODEL` | *(omp default)* | the omp model to spawn (fuzzy match, e.g. `glm-5.2`, `glm-4.5-flash`, `opus`). Lets the loop pin a model without changing omp's global config. Unset → omp's configured default. |
@@ -63,16 +66,17 @@ Before your first run you decompose the work into tasks (see
 
 ## Two planes
 
-- **Control plane** = the directory containing `ralph.sh` (`$DIR`). Protocol,
+- **Tool repo** = this repository: `ralph.sh`, helpers, tests, docs, and examples.
+- **Control plane** = `$RALPH_CONTROL_DIR`. Protocol,
   status, handoff, knowledge, task specs, logs. The spawned agent reads/writes
   these by **absolute** `CONTROL_DIR/...` path.
-- **Work plane** = `$RALPH_PROJECT` (default: the *parent* of this repo, i.e.
-  the project it ships next to). The spawn runs with `--cwd "$PROJECT"`; all
-  code changes land there. Git-churn analytics diff against that repo.
+- **Work plane** = `$RALPH_PROJECT` (default: the parent of the control plane).
+  The spawn runs with `--cwd "$PROJECT"`; all code changes land there.
+  Git-churn analytics diff against that repo.
 
-Keeping them separate means the control plane is **namespaced** — it never
-collides with a project's own `AGENTS.md` — while still sitting next to the
-project it drives.
+Keeping the tool, control plane, and work plane distinct prevents the tool repo
+from looking like a project with active Ralph tasks. The checked-in control
+plane under `examples/control-plane/` is illustrative.
 
 ### Layout
 
@@ -80,15 +84,18 @@ project it drives.
 jz-ralph-loop/
   ralph.sh         # the bash loop driver
   analytics.sh     # renders runs/<plan>/analytics/summary.md
-  AGENTS.md        # per-iteration protocol the spawned omp reads first (THE contract)
-  PROGRESS.md       # status only: one checkbox per task, grouped by phase
-  HANDOFF.md       # transient; REWRITTEN each iteration (in-flight state)
-  KNOWLEDGE.md     # durable; append-only pitfall ledger (kept <~30 lines)
-  tasks/
-    _TEMPLATE.md   # blank task template
-    0NN-<slug>.md  # immutable task specs (zero-padded → dependency order)
+  lib.sh           # pure helper functions used by the driver
+  examples/
+    control-plane/
+      AGENTS.md      # per-iteration protocol the spawned omp reads first
+      PROGRESS.md    # status only: one checkbox per task, grouped by phase
+      HANDOFF.md     # transient; REWRITTEN each iteration
+      KNOWLEDGE.md   # durable pitfall ledger
+      tasks/
+        _TEMPLATE.md # blank task template
+        0NN-<slug>.md
   .gitignore       # ignores runs/ and scratch files
-  runs/            # created at runtime, gitignored
+  <control-plane>/runs/ # created at runtime, gitignored
     RALPH.log              # master: one line per event across ALL plans
     <UTC-timestamp>/       # one dir per ralph.sh invocation ("plan"/"run")
       timeline.csv         # per-iteration metrics
@@ -102,16 +109,17 @@ jz-ralph-loop/
 ## How one iteration works (`ralph.sh`)
 
 1. Pre-flight: asserts `AGENTS.md`, `PROGRESS.md`, `HANDOFF.md`, `KNOWLEDGE.md`
-   exist (exit `1` if any is missing). Creates a fresh `runs/<UTC>/` plan dir,
-   snapshots the project's `HEAD` as the churn baseline, writes the
+   exist under `$RALPH_CONTROL_DIR` (exit `1` if any is missing). Creates a
+   fresh `runs/<UTC>/` plan dir in the control plane, snapshots the project's
+   `HEAD` as the churn baseline, writes the
    `timeline.csv` header.
 2. For each iteration (up to `RALPH_MAX_ITERS`):
    - Copies `PROGRESS.md` to `.progress.N.before` (to detect which box flips).
    - Spawns **one** fresh omp:
      ```bash
      omp -p --no-session --auto-approve --cwd "$PROJECT" \
-       "You are ONE iteration of a Ralph loop. CONTROL_DIR is $DIR. \
-        Read and follow the protocol at $DIR/AGENTS.md exactly. …"
+       "You are ONE iteration of a Ralph loop. CONTROL_DIR is $CONTROL_DIR. \
+        Read and follow the protocol at $CONTROL_DIR/AGENTS.md exactly. …"
      ```
    - Scans the iteration log for a keyword (first match wins, **BLOCKED** has
      priority) → records the outcome.
@@ -185,8 +193,8 @@ TDD-where-applicable.
 
 ## Analytics
 
-Every `ralph.sh` invocation creates `runs/<UTC-timestamp>/`. After each
-iteration the driver appends a `timeline.csv` row and regenerates
+Every `ralph.sh` invocation creates `runs/<UTC-timestamp>/` under the control
+plane. After each iteration the driver appends a `timeline.csv` row and regenerates
 `analytics/summary.md` (a live dashboard — tail it to watch progress).
 
 `timeline.csv` columns:
@@ -294,8 +302,8 @@ RUN_LIVE_AI=1 ./test/run_tests.sh                                       # defaul
 RALPH_TEST_MODEL=glm-4.5-flash RUN_LIVE_AI=1 ./test/run_tests.sh        # pin a cheaper model
 ```
 
-The live run builds a throwaway control + work plane in a temp dir (the repo's
-own `PROGRESS.md` is never touched), so it is safe to re-run.
+The live run builds a throwaway control + work plane in a temp dir (the checked-in
+example under `examples/control-plane/` is never touched), so it is safe to re-run.
 
 ## Origin
 
